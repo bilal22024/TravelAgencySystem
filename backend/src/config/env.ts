@@ -3,6 +3,10 @@ import { z } from 'zod'
 
 config()
 
+console.log('CLIENT_URL RAW =', JSON.stringify(process.env.CLIENT_URL))
+console.log('DATABASE_URL exists =', !!process.env.DATABASE_URL)
+console.log('JWT_SECRET exists =', !!process.env.JWT_SECRET)
+
 const environmentSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   PORT: z.coerce.number().int().positive().default(4000),
