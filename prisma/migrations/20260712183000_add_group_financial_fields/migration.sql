@@ -1,0 +1,3 @@
+ALTER TABLE "Group"
+ADD COLUMN "amountPerPax" DECIMAL(12, 2),
+ADD COLUMN "totalAmount" DECIMAL(12, 2);

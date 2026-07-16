@@ -1,0 +1,22 @@
+:root {
+  --color-slate-50: #f8fafc;
+  --color-slate-100: #e2e8f0;
+  --color-slate-200: #cbd5e1;
+  --color-slate-400: #94a3b8;
+  --color-slate-500: #64748b;
+  --color-slate-600: #475569;
+  --color-slate-800: #1e293b;
+  --color-slate-900: #0f172a;
+  --color-slate-950: #020617;
+  --app-bg: #07111f;
+  --app-surface: rgba(10, 18, 31, 0.86);
+  --app-surface-strong: rgba(9, 16, 27, 0.96);
+  --app-border: rgba(148, 163, 184, 0.16);
+  --app-text: #e2e8f0;
+  --app-muted: #94a3b8;
+  --app-accent: #67e8f9;
+  --app-accent-strong: #22d3ee;
+  --app-success: #34d399;
+  --app-warning: #fbbf24;
+  --app-danger: #fb7185;
+}

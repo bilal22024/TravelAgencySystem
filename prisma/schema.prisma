@@ -1,0 +1,153 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  SUPER_ADMIN
+  AGENCY_ADMIN
+  AGENT
+  ACCOUNTANT
+  OPERATIONS
+}
+
+enum GroupStatus {
+  PLANNED
+  CONFIRMED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum PaymentMethod {
+  CASH
+  BANK_TRANSFER
+  CREDIT_CARD
+  DEBIT_CARD
+  ONLINE
+  CHEQUE
+  OTHER
+}
+
+enum PaymentStatus {
+  PENDING
+  PARTIALLY_ALLOCATED
+  ALLOCATED
+  FAILED
+  REFUNDED
+}
+
+model Agency {
+  id           String    @id @default(uuid()) @db.Uuid
+  name         String    @db.VarChar(120)
+  code         String    @unique @db.VarChar(24)
+  contactEmail String?   @db.VarChar(255)
+  contactPhone String?   @db.VarChar(30)
+  addressLine1 String?   @db.VarChar(255)
+  addressLine2 String?   @db.VarChar(255)
+  city         String?   @db.VarChar(120)
+  state        String?   @db.VarChar(120)
+  country      String?   @db.VarChar(120)
+  postalCode   String?   @db.VarChar(20)
+  isActive     Boolean   @default(true)
+  groups       Group[]
+  payments     Payment[]
+  users        User[]
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@index([isActive])
+  @@index([name])
+}
+
+model Group {
+  id            String         @id @default(uuid()) @db.Uuid
+  agencyId      String         @db.Uuid
+  name          String         @db.VarChar(120)
+  code          String         @db.VarChar(30)
+  amountPerPax  Decimal?       @db.Decimal(12, 2)
+  totalAmount   Decimal?       @db.Decimal(12, 2)
+  description   String?        @db.Text
+  destination   String         @db.VarChar(120)
+  departureDate DateTime
+  returnDate    DateTime
+  status        GroupStatus    @default(PLANNED)
+  travelerCount Int            @default(0)
+  notes         String?        @db.Text
+  agency        Agency         @relation(fields: [agencyId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  paymentGroups PaymentGroup[]
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  @@unique([code])
+  @@index([agencyId])
+  @@index([agencyId, status])
+  @@index([departureDate, returnDate])
+}
+
+model Payment {
+  id               String         @id @default(uuid()) @db.Uuid
+  agencyId         String         @db.Uuid
+  receivedByUserId String?        @db.Uuid
+  receiptNumber    String?        @unique @db.VarChar(40)
+  reference        String         @db.VarChar(40)
+  amount           Decimal        @db.Decimal(12, 2)
+  currency         String         @default("USD") @db.Char(3)
+  method           PaymentMethod
+  status           PaymentStatus  @default(PENDING)
+  paymentCity      String?        @db.VarChar(120)
+  description      String?        @db.Text
+  paidAt           DateTime?
+  agency           Agency         @relation(fields: [agencyId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  receivedBy       User?          @relation("PaymentReceivedBy", fields: [receivedByUserId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  paymentGroups    PaymentGroup[]
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+
+  @@unique([reference])
+  @@index([agencyId])
+  @@index([receivedByUserId])
+  @@index([agencyId, status])
+  @@index([paidAt])
+}
+
+model PaymentGroup {
+  id              String   @id @default(uuid()) @db.Uuid
+  paymentId       String   @db.Uuid
+  groupId         String   @db.Uuid
+  allocatedAmount Decimal  @db.Decimal(12, 2)
+  notes           String?  @db.Text
+  payment         Payment  @relation(fields: [paymentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  group           Group    @relation(fields: [groupId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([paymentId, groupId])
+  @@index([paymentId])
+  @@index([groupId])
+}
+
+model User {
+  id               String    @id @default(uuid()) @db.Uuid
+  agencyId         String    @db.Uuid
+  firstName        String    @db.VarChar(80)
+  lastName         String    @db.VarChar(80)
+  email            String    @unique @db.VarChar(255)
+  phone            String?   @db.VarChar(30)
+  passwordHash     String    @db.VarChar(255)
+  role             UserRole
+  isActive         Boolean   @default(true)
+  lastLoginAt      DateTime?
+  agency           Agency    @relation(fields: [agencyId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  receivedPayments Payment[] @relation("PaymentReceivedBy")
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  @@index([agencyId])
+  @@index([agencyId, role])
+  @@index([isActive])
+}
