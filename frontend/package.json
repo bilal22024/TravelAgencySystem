@@ -8,11 +8,8 @@
 "scripts": {
   "dev": "vite",
   "build": "tsc --noEmit && vite build",
-  "start": "vite preview --host 0.0.0.0 --port ${PORT:-4173}",
-  "preview": "vite preview",
-  "lint": "eslint .",
-  "check": "tsc --noEmit",
-  "test": "vitest run"
+  "preview": "vite preview --host 0.0.0.0 --port $PORT",
+  "start": "vite preview --host 0.0.0.0 --port $PORT"
 }
 
   "dependencies": {
