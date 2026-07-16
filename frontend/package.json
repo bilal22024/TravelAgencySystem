@@ -10,7 +10,7 @@
   "build": "tsc --noEmit && vite build",
   "preview": "vite preview --host 0.0.0.0 --port $PORT",
   "start": "vite preview --host 0.0.0.0 --port $PORT"
-}
+},
 
   "dependencies": {
     "@tanstack/react-query": "^5.81.5",
