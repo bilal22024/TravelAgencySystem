@@ -26,20 +26,35 @@ export function createApp() {
 
   app.disable('x-powered-by')
   app.set('trust proxy', env.TRUST_PROXY)
+
   app.use(
     cors({
       origin: (origin, callback) => {
-        // Allow non-browser requests and the configured frontend origin.
-        if (!origin || isAllowedCorsOrigin(origin)) {
+        console.log('=================================')
+        console.log('Incoming Origin:', origin)
+        console.log('Expected Origin:', env.CLIENT_URL)
+        console.log('NODE_ENV:', env.NODE_ENV)
+
+        // Allow requests without Origin (Postman, curl, server-to-server, etc.)
+        if (!origin) {
+          console.log('✅ Allowed: No Origin header')
           callback(null, true)
           return
         }
 
+        if (isAllowedCorsOrigin(origin)) {
+          console.log('✅ Allowed:', origin)
+          callback(null, true)
+          return
+        }
+
+        console.error('❌ CORS BLOCKED:', origin)
         callback(new Error('Not allowed by CORS'))
       },
       credentials: true,
     }),
   )
+
   app.use(helmet())
   app.use(morgan(env.NODE_ENV === 'production' ? 'combined' : 'dev'))
   app.use(express.json())
@@ -48,6 +63,7 @@ export function createApp() {
   app.get('/api/openapi.json', (_request, response) => {
     return response.status(200).json(openApiDocument)
   })
+
   app.use('/api/docs', swaggerUi.serve, swaggerUi.setup(openApiDocument))
   app.use('/api', apiRouter)
 
