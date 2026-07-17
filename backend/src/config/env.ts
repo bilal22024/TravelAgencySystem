@@ -14,6 +14,7 @@ const environmentSchema = z.object({
   JWT_SECRET: z.string().min(16),
   JWT_EXPIRES_IN: z.string().min(1).default('1d'),
   CLIENT_URL: z.string().url(),
+  API_URL: z.string().url().default('http://localhost:4000'),
   TRUST_PROXY: z
     .union([z.boolean(), z.enum(['true', 'false'])])
     .transform((value) => value === true || value === 'true')

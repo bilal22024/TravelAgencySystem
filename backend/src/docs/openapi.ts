@@ -6,12 +6,18 @@ export const openApiDocument = {
     description:
       'Phase 3 backend for authentication, CRUD operations, validation, and Prisma-backed business APIs.',
   },
+
   servers: [
-    {
-      url: 'http://localhost:4000',
-      description: 'Local development server',
-    },
-  ],
+  {
+    url: env.API_URL,
+    description:
+      env.NODE_ENV === 'production'
+        ? 'Production API'
+        : 'Local Development API',
+  },
+],
+  
+  
   tags: [
     { name: 'Auth' },
     { name: 'Health' },
