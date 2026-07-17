@@ -1,3 +1,5 @@
+
+import { env } from '../config/env.js'
 export const openApiDocument = {
   openapi: '3.0.3',
   info: {
@@ -7,9 +9,12 @@ export const openApiDocument = {
       'Phase 3 backend for authentication, CRUD operations, validation, and Prisma-backed business APIs.',
   },
 
-  servers: [
+servers: [
   {
-    url: env.API_URL,
+    url:
+      env.NODE_ENV === 'production'
+        ? 'https://backend-production-43711.up.railway.app'
+        : 'http://localhost:4000',
     description:
       env.NODE_ENV === 'production'
         ? 'Production API'
