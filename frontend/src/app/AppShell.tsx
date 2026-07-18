@@ -39,10 +39,16 @@ export function AppShell({ children }: AppShellProps) {
           <header className="rounded-[32px] border border-white/10 bg-white/[0.05] px-5 py-4 shadow-panel backdrop-blur">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
               <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.3em] text-cyan-200">
-                  {routeMeta.title}
-                </p>
-                <h2 className="mt-2 font-display text-2xl text-white">{routeMeta.subtitle}</h2>
+                {routeMeta.subtitle ? (
+                  <>
+                    <p className="text-xs font-semibold uppercase tracking-[0.3em] text-cyan-200">
+                      {routeMeta.title}
+                    </p>
+                    <h2 className="mt-2 font-display text-2xl text-white">{routeMeta.subtitle}</h2>
+                  </>
+                ) : (
+                  <h1 className="font-display text-2xl text-white">{routeMeta.title}</h1>
+                )}
               </div>
 
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center">

@@ -1,4 +1,6 @@
+import type { LucideIcon } from 'lucide-react'
 import {
+  ArrowRight,
   Building2,
   CreditCard,
   FileBarChart2,
@@ -9,28 +11,12 @@ import {
   Wallet,
 } from 'lucide-react'
 import { Link } from 'react-router-dom'
-import { MetricCard } from '@/components/layout/MetricCard'
-import { PageHeader } from '@/components/layout/PageHeader'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { LoadingBlock } from '@/components/ui/LoadingBlock'
 import { Panel } from '@/components/ui/Panel'
-import { StatusBadge } from '@/components/ui/StatusBadge'
-import { useGroupsQuery } from '@/features/groups/api'
 import { usePaymentsQuery } from '@/features/payments/api'
-import { useOutstandingBalanceReportQuery } from '@/features/reports/api'
-import { formatCurrency, formatDate, formatNumber } from '@/lib/format'
-import type { OutstandingBalancePaymentStatus } from '@/types/api'
-
-function getStatusTone(status: OutstandingBalancePaymentStatus) {
-  switch (status) {
-    case 'FULLY_PAID':
-      return 'success' as const
-    case 'PARTIALLY_PAID':
-      return 'warning' as const
-    case 'UNPAID':
-      return 'danger' as const
-  }
-}
+import { useOutstandingBalanceReportQuery, useReportSummaryQuery } from '@/features/reports/api'
+import { formatCurrency, formatNumber } from '@/lib/format'
 
 function getTodayRange() {
   const now = new Date()
@@ -46,17 +32,118 @@ function getTodayRange() {
   }
 }
 
+function getCurrentMonth() {
+  const now = new Date()
+
+  return {
+    year: now.getFullYear(),
+    month: now.getMonth() + 1,
+    label: new Intl.DateTimeFormat('en-US', { month: 'long' }).format(now),
+  }
+}
+
+type DashboardMetricCardProps = {
+  title: string
+  value: string
+  detail: string
+  icon: LucideIcon
+  accentClassName?: string
+}
+
+function DashboardMetricCard({
+  title,
+  value,
+  detail,
+  icon: Icon,
+  accentClassName = 'bg-cyan-400/10 text-cyan-100',
+}: DashboardMetricCardProps) {
+  return (
+    <div className="rounded-[24px] border border-white/10 bg-white/[0.045] px-4 py-4 shadow-panel">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-400">
+            {title}
+          </p>
+          <p className="mt-3 font-display text-2xl text-white">{value}</p>
+        </div>
+        <span
+          className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl ${accentClassName}`}
+        >
+          <Icon className="h-4 w-4" />
+        </span>
+      </div>
+      <p className="mt-3 text-sm text-slate-300">{detail}</p>
+    </div>
+  )
+}
+
+type SnapshotMetricCardProps = {
+  label: string
+  value: string
+  detail: string
+}
+
+function SnapshotMetricCard({ label, value, detail }: SnapshotMetricCardProps) {
+  return (
+    <div className="rounded-[20px] border border-white/10 bg-white/[0.04] px-4 py-4">
+      <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-400">{label}</p>
+      <p className="mt-2 font-display text-2xl text-white">{value}</p>
+      <p className="mt-2 text-sm text-slate-300">{detail}</p>
+    </div>
+  )
+}
+
+type MiniTrendChartProps = {
+  data: Array<{
+    label: string
+    value: number
+  }>
+}
+
+function MiniTrendChart({ data }: MiniTrendChartProps) {
+  const maxValue = Math.max(...data.map((item) => item.value), 1)
+  const points = data
+    .map((item, index) => {
+      const x = (index / Math.max(data.length - 1, 1)) * 100
+      const y = 85 - (item.value / maxValue) * 60
+      return `${x},${y}`
+    })
+    .join(' ')
+
+  return (
+    <div className="rounded-[20px] border border-white/10 bg-[rgba(7,15,27,0.45)] px-4 py-4">
+      <svg viewBox="0 0 100 90" className="h-36 w-full">
+        <line x1="0" y1="85" x2="100" y2="85" className="stroke-white/10" strokeWidth="1" />
+        <polyline
+          points={points}
+          className="fill-none stroke-cyan-300"
+          strokeWidth="2.5"
+          vectorEffect="non-scaling-stroke"
+        />
+        {data.map((item, index) => {
+          const x = (index / Math.max(data.length - 1, 1)) * 100
+          const y = 85 - (item.value / maxValue) * 60
+
+          return <circle key={item.label} cx={x} cy={y} r="1.8" className="fill-cyan-200" />
+        })}
+      </svg>
+      <div className="mt-3 grid grid-cols-6 gap-2 text-center text-[11px] uppercase tracking-[0.12em] text-slate-400 sm:grid-cols-12">
+        {data.map((item) => (
+          <span key={item.label} className="truncate">
+            {item.label}
+          </span>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 export function DashboardPage() {
   const todayRange = getTodayRange()
+  const currentMonth = getCurrentMonth()
 
   const outstandingReportQuery = useOutstandingBalanceReportQuery({
     sortBy: 'outstandingBalance',
-    sortOrder: 'desc',
-  })
-  const recentPaymentsQuery = usePaymentsQuery({
-    page: 1,
-    pageSize: 8,
-    sortBy: 'paidAt',
     sortOrder: 'desc',
   })
   const todaysCollectionQuery = usePaymentsQuery({
@@ -67,28 +154,21 @@ export function DashboardPage() {
     sortBy: 'paidAt',
     sortOrder: 'desc',
   })
-  const recentGroupsQuery = useGroupsQuery({
-    page: 1,
-    pageSize: 8,
-    sortBy: 'createdAt',
-    sortOrder: 'desc',
+  const monthlySummaryQuery = useReportSummaryQuery({
+    year: currentMonth.year,
+    month: currentMonth.month,
   })
 
-  if (
-    outstandingReportQuery.isLoading ||
-    recentPaymentsQuery.isLoading ||
-    todaysCollectionQuery.isLoading ||
-    recentGroupsQuery.isLoading
-  ) {
+  if (outstandingReportQuery.isLoading || todaysCollectionQuery.isLoading || monthlySummaryQuery.isLoading) {
     return <LoadingBlock label="Loading the business dashboard..." />
   }
 
   if (
     outstandingReportQuery.isError ||
-    recentPaymentsQuery.isError ||
     todaysCollectionQuery.isError ||
-    recentGroupsQuery.isError ||
-    !outstandingReportQuery.data
+    monthlySummaryQuery.isError ||
+    !outstandingReportQuery.data ||
+    !monthlySummaryQuery.data
   ) {
     return (
       <EmptyState
@@ -100,9 +180,8 @@ export function DashboardPage() {
   }
 
   const outstandingReport = outstandingReportQuery.data
-  const recentPayments = recentPaymentsQuery.data?.data ?? []
   const todaysPayments = todaysCollectionQuery.data?.data ?? []
-  const recentGroups = recentGroupsQuery.data?.data ?? []
+  const monthlySummary = monthlySummaryQuery.data
 
   const totalAgencies =
     outstandingReport.summary.totalFullyPaidAgencies +
@@ -129,337 +208,286 @@ export function DashboardPage() {
     return total + Number(payment.amount)
   }, 0)
 
-  const outstandingAgencies = outstandingReport.rows
-    .filter((row) => row.outstandingBalance > 0)
-    .slice(0, 6)
+  const summaryCards = [
+    {
+      title: 'Total Agencies',
+      value: formatNumber(totalAgencies),
+      detail: 'Agencies visible in the current finance scope.',
+      icon: Building2,
+    },
+    {
+      title: 'Total Groups',
+      value: formatNumber(businessSummary.totalGroups),
+      detail: 'Groups contributing to live balances and reporting.',
+      icon: Users,
+      accentClassName: 'bg-amber-400/15 text-amber-100',
+    },
+    {
+      title: 'Total Pax',
+      value: formatNumber(businessSummary.totalPassengers),
+      detail: 'Passenger volume across all visible agencies.',
+      icon: Landmark,
+      accentClassName: 'bg-emerald-400/15 text-emerald-100',
+    },
+    {
+      title: 'Payments Received',
+      value: formatCurrency(businessSummary.totalReceived),
+      detail: 'Total amount received without changing current calculations.',
+      icon: CreditCard,
+      accentClassName: 'bg-emerald-400/15 text-emerald-100',
+    },
+    {
+      title: 'Outstanding Balance',
+      value: formatCurrency(outstandingReport.summary.totalOutstandingAmount),
+      detail: 'Current unpaid balance requiring agency follow-up.',
+      icon: Wallet,
+      accentClassName: 'bg-rose-400/15 text-rose-100',
+    },
+    {
+      title: "Today's Collections",
+      value: formatCurrency(todaysCollection),
+      detail: 'Payments recorded today in the current scope.',
+      icon: Receipt,
+      accentClassName: 'bg-cyan-400/15 text-cyan-100',
+    },
+  ]
+
+  const quickActions = [
+    {
+      title: 'Add Agency',
+      description: 'Register a new agency or branch.',
+      href: '/agencies',
+      icon: Building2,
+    },
+    {
+      title: 'Add Groups',
+      description: 'Create new groups from the entry page.',
+      href: '/groups/add',
+      icon: Users,
+    },
+    {
+      title: 'Record Payment',
+      description: 'Capture a new receipt quickly.',
+      href: '/payments',
+      icon: CreditCard,
+    },
+    {
+      title: 'Agency Report',
+      description: 'Review agency finance details.',
+      href: '/reports/agency',
+      icon: FileBarChart2,
+    },
+    {
+      title: 'Outstanding Report',
+      description: 'Follow up unpaid agency balances.',
+      href: '/reports/outstanding-balances',
+      icon: Wallet,
+    },
+  ]
+
+  const monthlyBusinessSummary = [
+    {
+      label: 'Total Groups',
+      value: formatNumber(businessSummary.totalGroups),
+      detail: 'Live groups in the current dashboard scope.',
+    },
+    {
+      label: 'Total Pax',
+      value: formatNumber(businessSummary.totalPassengers),
+      detail: 'Live passenger volume across visible agencies.',
+    },
+    {
+      label: 'Payments Received',
+      value: formatCurrency(monthlySummary.totals.totalRevenue),
+      detail: `${currentMonth.label} collections from the reporting summary.`,
+    },
+    {
+      label: 'Outstanding Balance',
+      value: formatCurrency(monthlySummary.totals.outstandingBalance),
+      detail: `${currentMonth.label} unpaid balance from the reporting summary.`,
+    },
+  ]
+
+  const countrySummary = Array.from(
+    outstandingReport.rows.reduce<
+      Map<
+        string,
+        {
+          country: string
+          totalGroups: number
+          totalPax: number
+          totalAmountPaid: number
+          outstandingAmount: number
+        }
+      >
+    >((bucket, row) => {
+      const country = row.country || 'Unspecified'
+      const countryBucket = bucket.get(country) ?? {
+        country,
+        totalGroups: 0,
+        totalPax: 0,
+        totalAmountPaid: 0,
+        outstandingAmount: 0,
+      }
+
+      countryBucket.totalGroups += row.totalGroups
+      countryBucket.totalPax += row.totalPax
+      countryBucket.totalAmountPaid += row.totalAmountPaid
+      countryBucket.outstandingAmount += row.outstandingBalance
+
+      bucket.set(country, countryBucket)
+      return bucket
+    }, new Map()).values(),
+  ).sort((left, right) => {
+    return (
+      right.totalAmountPaid - left.totalAmountPaid ||
+      right.outstandingAmount - left.outstandingAmount
+    )
+  })
+
+  const monthlyTrendData = monthlySummary.monthlyRevenue.map((item) => ({
+    label: item.month.slice(0, 3).toUpperCase(),
+    value: item.revenue,
+  }))
+
+  const strongestMonth = monthlySummary.monthlyRevenue.reduce(
+    (top, month) => (month.revenue > top.revenue ? month : top),
+    monthlySummary.monthlyRevenue[0] ?? { month: currentMonth.label, revenue: 0 },
+  )
 
   return (
-    <div className="space-y-6">
-      <PageHeader
-        eyebrow="Dashboard"
-        title="Business dashboard for agency operations and finance"
-        description="Track agencies, groups, collections, outstanding balances, and recent activity from one finance-focused workspace."
-      />
-
-      <Panel
-        title="Business Summary"
-        description="High-level business volume across agencies and groups."
-      >
-        <div className="grid gap-4 xl:grid-cols-3">
-          <MetricCard
-            title="Total Agencies"
-            value={formatNumber(totalAgencies)}
-            detail="Agencies visible in the current business scope."
-            icon={Building2}
-          />
-          <MetricCard
-            title="Total Groups"
-            value={formatNumber(businessSummary.totalGroups)}
-            detail="Groups currently contributing to reports and balances."
-            icon={Users}
-            accentClassName="bg-amber-400/15 text-amber-100"
-          />
-          <MetricCard
-            title="Total Passengers"
-            value={formatNumber(businessSummary.totalPassengers)}
-            detail="Passenger volume across all visible agencies."
-            icon={Landmark}
-            accentClassName="bg-emerald-400/15 text-emerald-100"
-          />
-        </div>
-      </Panel>
-
-      <Panel
-        title="Financial Summary"
-        description="Amounts are displayed from the current live data without changing existing calculations."
-      >
-        <div className="grid gap-4 xl:grid-cols-4">
-          <MetricCard
-            title="Total Receivable"
-            value={formatCurrency(businessSummary.totalReceivable)}
-            detail="Total group value currently visible in the system."
-            icon={Receipt}
-          />
-          <MetricCard
-            title="Total Received"
-            value={formatCurrency(businessSummary.totalReceived)}
-            detail="Total amount received from visible agencies."
-            icon={CreditCard}
-            accentClassName="bg-emerald-400/15 text-emerald-100"
-          />
-          <MetricCard
-            title="Outstanding Balance"
-            value={formatCurrency(outstandingReport.summary.totalOutstandingAmount)}
-            detail="Current unpaid balance requiring follow-up."
-            icon={Wallet}
-            accentClassName="bg-rose-400/15 text-rose-100"
-          />
-          <MetricCard
-            title="Today's Collection"
-            value={formatCurrency(todaysCollection)}
-            detail="Payments recorded today in the current scope."
-            icon={Landmark}
-            accentClassName="bg-cyan-400/15 text-cyan-100"
-          />
-        </div>
-      </Panel>
-
-      <Panel
-        title="Agency Status"
-        description="Agency payment position based on the existing outstanding balance report."
-      >
-        <div className="grid gap-4 xl:grid-cols-3">
-          <MetricCard
-            title="Fully Paid"
-            value={formatNumber(outstandingReport.summary.totalFullyPaidAgencies)}
-            detail="Agencies with no visible outstanding balance."
-            icon={ShieldCheck}
-            accentClassName="bg-emerald-400/15 text-emerald-100"
-          />
-          <MetricCard
-            title="Partially Paid"
-            value={formatNumber(outstandingReport.summary.totalPartiallyPaidAgencies)}
-            detail="Agencies with both payments and remaining balance."
-            icon={CreditCard}
-            accentClassName="bg-amber-400/15 text-amber-100"
-          />
-          <MetricCard
-            title="Unpaid"
-            value={formatNumber(outstandingReport.summary.totalUnpaidAgencies)}
-            detail="Agencies with open balances and no visible payment coverage."
-            icon={Wallet}
-            accentClassName="bg-rose-400/15 text-rose-100"
-          />
-        </div>
-      </Panel>
-
-      <div className="grid gap-6 xl:grid-cols-[1.05fr,0.95fr]">
-        <Panel
-          title="Recent Payments"
-          description="Latest recorded payments for quick finance review."
-          action={
-            <Link
-              className="text-sm font-semibold text-cyan-200 transition hover:text-cyan-100"
-              to="/payments"
-            >
-              View all payments
-            </Link>
-          }
-        >
-          {recentPayments.length === 0 ? (
-            <EmptyState
-              icon={CreditCard}
-              title="No recent payments"
-              description="Payments will appear here as soon as they are recorded."
-            />
-          ) : (
-            <div className="space-y-3">
-              {recentPayments.map((payment) => (
-                <div
-                  key={payment.id}
-                  className="flex flex-col gap-3 rounded-[22px] border border-white/10 bg-white/[0.04] px-4 py-4 lg:flex-row lg:items-center lg:justify-between"
-                >
-                  <div>
-                    <p className="text-sm font-semibold text-white">
-                      {payment.agency?.name ?? 'Unknown agency'}
-                    </p>
-                    <p className="mt-1 text-sm text-slate-300">
-                      Ref {payment.reference}
-                      {payment.paymentCity ? ` • ${payment.paymentCity}` : ''}
-                      {' • '}
-                      {payment.paidAt ? formatDate(payment.paidAt) : formatDate(payment.createdAt)}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-4">
-                    <div className="text-right">
-                      <p className="text-sm font-semibold text-white">
-                        {formatCurrency(Number(payment.amount), payment.currency)}
-                      </p>
-                      <p className="mt-1 text-xs uppercase tracking-[0.18em] text-slate-400">
-                        {payment.method.replace(/_/g, ' ')}
-                      </p>
-                    </div>
-                    <StatusBadge
-                      label={payment.status.replace(/_/g, ' ')}
-                      tone={
-                        payment.status === 'ALLOCATED'
-                          ? 'success'
-                          : payment.status === 'PARTIALLY_ALLOCATED'
-                            ? 'warning'
-                            : 'neutral'
-                      }
-                    />
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </Panel>
-
-        <Panel
-          title="Outstanding Agencies"
-          description="Agencies with the highest current outstanding balances."
-          action={
-            <Link
-              className="text-sm font-semibold text-cyan-200 transition hover:text-cyan-100"
-              to="/reports/outstanding-balances"
-            >
-              View outstanding report
-            </Link>
-          }
-        >
-          {outstandingAgencies.length === 0 ? (
-            <EmptyState
-              icon={Wallet}
-              title="No outstanding agencies"
-              description="All visible agencies are currently fully paid."
-            />
-          ) : (
-            <div className="space-y-3">
-              {outstandingAgencies.map((agency) => (
-                <div
-                  key={agency.agencyId}
-                  className="flex flex-col gap-3 rounded-[22px] border border-white/10 bg-white/[0.04] px-4 py-4 lg:flex-row lg:items-center lg:justify-between"
-                >
-                  <div>
-                    <p className="text-sm font-semibold text-white">{agency.agencyName}</p>
-                    <p className="mt-1 text-sm text-slate-300">
-                      {agency.country} • {agency.city} • Agent {agency.agentNumber}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-4">
-                    <div className="text-right">
-                      <p className="text-sm font-semibold text-white">
-                        {formatCurrency(agency.outstandingBalance)}
-                      </p>
-                      <p className="mt-1 text-xs uppercase tracking-[0.18em] text-slate-400">
-                        Paid {formatCurrency(agency.totalAmountPaid)}
-                      </p>
-                    </div>
-                    <StatusBadge
-                      label={agency.paymentStatusLabel}
-                      tone={getStatusTone(agency.paymentStatus)}
-                    />
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </Panel>
+    <div className="space-y-5">
+      <div className="flex items-center justify-between">
+        <h1 className="font-display text-2xl text-white sm:text-3xl">Finance Dashboard</h1>
+        <span className="rounded-full border border-emerald-400/25 bg-emerald-400/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-emerald-100">
+          Live Data
+        </span>
       </div>
 
-      <div className="grid gap-6 xl:grid-cols-[0.95fr,1.05fr]">
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
+        {summaryCards.map((card) => (
+          <DashboardMetricCard
+            key={card.title}
+            title={card.title}
+            value={card.value}
+            detail={card.detail}
+            icon={card.icon}
+            accentClassName={card.accentClassName}
+          />
+        ))}
+      </div>
+
+      <div className="grid gap-5 xl:grid-cols-[1.1fr,0.9fr]">
         <Panel
-          title="Recently Added Groups"
-          description="Latest groups added to the system."
-          action={
-            <Link
-              className="text-sm font-semibold text-cyan-200 transition hover:text-cyan-100"
-              to="/groups"
-            >
-              View group list
-            </Link>
-          }
+          title="Monthly Business Summary"
+          description={`Current month finance view for ${currentMonth.label}, using live reports and existing dashboard totals.`}
         >
-          {recentGroups.length === 0 ? (
-            <EmptyState
-              icon={Users}
-              title="No groups available"
-              description="Newly added groups will appear here when they are created."
-            />
-          ) : (
-            <div className="space-y-3">
-              {recentGroups.map((group) => (
-                <div
-                  key={group.id}
-                  className="flex flex-col gap-3 rounded-[22px] border border-white/10 bg-white/[0.04] px-4 py-4 lg:flex-row lg:items-center lg:justify-between"
-                >
-                  <div>
-                    <p className="text-sm font-semibold text-white">
-                      {group.code} • {group.name}
-                    </p>
-                    <p className="mt-1 text-sm text-slate-300">
-                      {group.agency?.name ?? 'Unknown agency'} • {formatDate(group.createdAt)}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-4">
-                    <div className="text-right">
-                      <p className="text-sm font-semibold text-white">
-                        {formatCurrency(Number(group.totalAmount ?? 0))}
-                      </p>
-                      <p className="mt-1 text-xs uppercase tracking-[0.18em] text-slate-400">
-                        {formatNumber(group.travelerCount)} passengers
-                      </p>
-                    </div>
-                    <StatusBadge
-                      label={group.paymentStatusLabel ?? 'Unpaid'}
-                      tone={
-                        group.paymentStatus === 'FULLY_PAID'
-                          ? 'success'
-                          : group.paymentStatus === 'PARTIALLY_PAID'
-                            ? 'warning'
-                            : 'danger'
-                      }
-                    />
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
+          <div className="grid gap-3 sm:grid-cols-2">
+            {monthlyBusinessSummary.map((item) => (
+              <SnapshotMetricCard
+                key={item.label}
+                label={item.label}
+                value={item.value}
+                detail={item.detail}
+              />
+            ))}
+          </div>
         </Panel>
 
-        <Panel
-          title="Quick Actions"
-          description="Open the most common daily actions used by finance and operations staff."
-        >
-          <div className="grid gap-3 md:grid-cols-2">
-            {[
-              {
-                title: 'Add Agency',
-                description: 'Open the agency workspace to register a new agency.',
-                href: '/agencies',
-                icon: Building2,
-              },
-              {
-                title: 'Add Groups',
-                description: 'Create new groups using the dedicated entry page.',
-                href: '/groups/add',
-                icon: Users,
-              },
-              {
-                title: 'Record Payment',
-                description: 'Open the payment screen to record a new receipt.',
-                href: '/payments',
-                icon: CreditCard,
-              },
-              {
-                title: 'Agency Report',
-                description: 'Review agency-level financial detail and payment history.',
-                href: '/reports/agency',
-                icon: FileBarChart2,
-              },
-              {
-                title: 'Outstanding Report',
-                description: 'Review agencies with open balances and follow-up needs.',
-                href: '/reports/outstanding-balances',
-                icon: Wallet,
-              },
-            ].map((item) => (
+        <Panel title="Quick Actions" description="Open the most common daily finance and operations tasks.">
+          <div className="grid gap-3 sm:grid-cols-2">
+            {quickActions.map((item) => (
               <Link
                 key={item.title}
-                className="flex items-start gap-4 rounded-[24px] border border-white/10 bg-white/[0.04] px-4 py-4 transition hover:bg-white/[0.08]"
+                className="flex items-center justify-between gap-3 rounded-[20px] border border-white/10 bg-white/[0.04] px-4 py-3 transition hover:bg-white/[0.08]"
                 to={item.href}
               >
-                <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-cyan-400/10 text-cyan-100">
-                  <item.icon className="h-5 w-5" />
-                </span>
-                <span className="min-w-0">
+                <span className="flex items-center gap-3">
+                  <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-cyan-400/10 text-cyan-100">
+                    <item.icon className="h-4 w-4" />
+                  </span>
                   <span className="block text-sm font-semibold text-white">{item.title}</span>
-                  <span className="mt-1 block text-sm text-slate-300">{item.description}</span>
                 </span>
+                <ArrowRight className="h-4 w-4 shrink-0 text-slate-500" />
               </Link>
             ))}
           </div>
+        </Panel>
+      </div>
+
+      <div className="grid gap-5 xl:grid-cols-[0.82fr,1.18fr]">
+        <Panel
+          title="Monthly Collection Trend"
+          description={`Small ${currentMonth.year} collection trend from the existing report summary.`}
+        >
+          <div className="space-y-4">
+            <MiniTrendChart data={monthlyTrendData} />
+            <div className="grid gap-3 sm:grid-cols-3">
+              <div className="rounded-[18px] border border-white/10 bg-white/[0.04] px-4 py-3">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">
+                  Best Month
+                </p>
+                <p className="mt-2 text-sm font-semibold text-white">{strongestMonth.month}</p>
+              </div>
+              <div className="rounded-[18px] border border-white/10 bg-white/[0.04] px-4 py-3">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">
+                  Best Collection
+                </p>
+                <p className="mt-2 text-sm font-semibold text-white">
+                  {formatCurrency(strongestMonth.revenue)}
+                </p>
+              </div>
+              <div className="rounded-[18px] border border-white/10 bg-white/[0.04] px-4 py-3">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">
+                  Today's Collections
+                </p>
+                <p className="mt-2 text-sm font-semibold text-white">
+                  {formatCurrency(todaysCollection)}
+                </p>
+              </div>
+            </div>
+          </div>
+        </Panel>
+
+        <Panel
+          title="Country-wise Business Summary"
+          description="Country totals are aggregated from the existing outstanding balance report."
+        >
+          {countrySummary.length === 0 ? (
+            <EmptyState
+              icon={ShieldCheck}
+              title="No country summary available"
+              description="Country totals will appear here once agencies, groups, and payments are available."
+            />
+          ) : (
+            <div className="space-y-2">
+              <div className="grid grid-cols-[1.2fr,0.7fr,0.7fr,0.9fr,0.9fr] gap-3 px-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400">
+                <span>Country</span>
+                <span className="text-right">Groups</span>
+                <span className="text-right">Pax</span>
+                <span className="text-right">Received</span>
+                <span className="text-right">Outstanding</span>
+              </div>
+              {countrySummary.slice(0, 8).map((country) => (
+                <div
+                  key={country.country}
+                  className="grid grid-cols-[1.2fr,0.7fr,0.7fr,0.9fr,0.9fr] gap-3 rounded-[18px] border border-white/10 bg-white/[0.04] px-4 py-3 text-sm"
+                >
+                  <span className="truncate font-semibold text-white">{country.country}</span>
+                  <span className="text-right text-slate-200">
+                    {formatNumber(country.totalGroups)}
+                  </span>
+                  <span className="text-right text-slate-200">{formatNumber(country.totalPax)}</span>
+                  <span className="text-right text-slate-200">
+                    {formatCurrency(country.totalAmountPaid)}
+                  </span>
+                  <span className="text-right text-rose-100">
+                    {formatCurrency(country.outstandingAmount)}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
         </Panel>
       </div>
     </div>

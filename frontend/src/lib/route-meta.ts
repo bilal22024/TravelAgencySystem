@@ -13,7 +13,7 @@ import {
 
 export type AppRouteMeta = {
   title: string
-  subtitle: string
+  subtitle?: string
 }
 
 export type NavigationItem = AppRouteMeta & {
@@ -25,7 +25,6 @@ export const navigationItems: NavigationItem[] = [
   {
     href: '/',
     title: 'Dashboard',
-    subtitle: 'Operational control center',
     icon: LayoutDashboard,
   },
   {
