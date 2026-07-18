@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { ChevronDown, Download, FileSpreadsheet, Printer, ShieldAlert } from 'lucide-react'
+import { ChevronDown, ChevronRight, Download, FileSpreadsheet, Printer, ShieldAlert } from 'lucide-react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { EmptyState } from '@/components/ui/EmptyState'
@@ -16,6 +16,8 @@ import {
 import { useDebouncedSearch } from '@/hooks/useDebouncedSearch'
 import { formatCurrency, formatDate, formatNumber } from '@/lib/format'
 import type { AgencyListItem } from '@/types/api'
+
+type AgencyReportData = NonNullable<ReturnType<typeof useAgencyReportQuery>['data']>
 
 const paymentStatusOptions = [
   { value: '', label: 'All payment statuses' },
@@ -52,6 +54,10 @@ function buildAgencyOptionLabel(agency: AgencyListItem) {
   return `${agency.name} (${agency.code}) - Standalone`
 }
 
+function buildAgencyBaseLabel(agency: AgencyListItem) {
+  return `${agency.name} (${agency.code})`
+}
+
 function buildAgencySearchText(agency: AgencyListItem) {
   return [
     agency.name,
@@ -66,7 +72,25 @@ function buildAgencySearchText(agency: AgencyListItem) {
     .toLowerCase()
 }
 
-function getScopePresentation(report: NonNullable<ReturnType<typeof useAgencyReportQuery>['data']>) {
+function getClosedSelectorLabel(report: AgencyReportData) {
+  const agencyLabel = `${report.agency.agencyName} (${report.agency.agentNumber})`
+
+  if (report.agency.reportScope === 'CONSOLIDATED') {
+    return `${agencyLabel} - Consolidated`
+  }
+
+  if (report.agency.hierarchyType === 'PARENT') {
+    return `${agencyLabel} - Parent Only`
+  }
+
+  if (report.agency.hierarchyType === 'BRANCH' && report.agency.parentAgency) {
+    return `${agencyLabel} - Branch of ${report.agency.parentAgency.agencyName}`
+  }
+
+  return `${agencyLabel} - Standalone`
+}
+
+function getScopePresentation(report: AgencyReportData) {
   const visibleHierarchyType =
     report.agency.visibleAgencyFilter?.hierarchyType ?? report.agency.hierarchyType
   const isConsolidatedAll =
@@ -153,6 +177,7 @@ export function AgencyReportPage() {
   const { searchText, debouncedSearchText, updateSearchText } = useDebouncedSearch()
   const [agencySelectorOpen, setAgencySelectorOpen] = useState(false)
   const [agencySearchText, setAgencySearchText] = useState('')
+  const [expandedParentIds, setExpandedParentIds] = useState<Record<string, boolean>>({})
 
   const agenciesQuery = useAgenciesQuery({
     page: 1,
@@ -283,11 +308,42 @@ export function AgencyReportPage() {
 
     return buildAgencySearchText(agency).includes(agencySearchText.trim().toLowerCase())
   })
-  const groupedAgencyOptions = {
-    PARENT: filteredAgencies.filter((agency) => getAgencyHierarchyType(agency) === 'PARENT'),
-    BRANCH: filteredAgencies.filter((agency) => getAgencyHierarchyType(agency) === 'BRANCH'),
-    STANDALONE: filteredAgencies.filter((agency) => getAgencyHierarchyType(agency) === 'STANDALONE'),
-  }
+  const filteredParentAgencies = filteredAgencies.filter((agency) => getAgencyHierarchyType(agency) === 'PARENT')
+  const filteredBranchAgencies = filteredAgencies.filter((agency) => getAgencyHierarchyType(agency) === 'BRANCH')
+  const filteredStandaloneAgencies = filteredAgencies.filter(
+    (agency) => getAgencyHierarchyType(agency) === 'STANDALONE',
+  )
+  const branchesByParentId = agencies.reduce<Record<string, AgencyListItem[]>>((total, agency) => {
+    if (!agency.parentAgency?.id) {
+      return total
+    }
+
+    total[agency.parentAgency.id] = [...(total[agency.parentAgency.id] ?? []), agency]
+    return total
+  }, {})
+  const branchMatchParentIds = new Set(filteredBranchAgencies.map((branch) => branch.parentAgency?.id).filter(Boolean))
+  const parentTreeOptions = agencies
+    .filter((agency) => getAgencyHierarchyType(agency) === 'PARENT')
+    .filter((parent) => {
+      if (!agencySearchText.trim()) {
+        return true
+      }
+
+      return filteredParentAgencies.some((agency) => agency.id === parent.id) || branchMatchParentIds.has(parent.id)
+    })
+    .map((parent) => {
+      const parentMatched = filteredParentAgencies.some((agency) => agency.id === parent.id)
+      const allBranches = branchesByParentId[parent.id] ?? []
+      const visibleBranches =
+        !agencySearchText.trim() || parentMatched
+          ? allBranches
+          : allBranches.filter((branch) => filteredBranchAgencies.some((item) => item.id === branch.id))
+
+      return {
+        parent,
+        branches: visibleBranches,
+      }
+    })
 
   function openAgencyReport(
     agencyId: string,
@@ -315,6 +371,42 @@ export function AgencyReportPage() {
       label: `${branch.agencyName} (${branch.agentNumber})`,
     })),
   ]
+  const selectedParentId =
+    selectedAgencyHierarchyType === 'BRANCH'
+      ? selectedAgency?.parentAgency?.id ?? null
+      : selectedAgencyHierarchyType === 'PARENT'
+        ? selectedAgency?.id ?? null
+        : null
+
+  function isParentExpanded(parentId: string) {
+    if (agencySearchText.trim()) {
+      return true
+    }
+
+    return expandedParentIds[parentId] ?? selectedParentId === parentId
+  }
+
+  function toggleParentExpansion(parentId: string) {
+    setExpandedParentIds((current) => ({
+      ...current,
+      [parentId]: !(current[parentId] ?? selectedParentId === parentId),
+    }))
+  }
+
+  function isTreeSelectionActive(
+    agencyId: string,
+    selection: 'consolidated' | 'parent-only' | 'branch',
+  ) {
+    if (selection === 'consolidated') {
+      return selectedAgencyId === agencyId && includeBranches
+    }
+
+    if (selection === 'parent-only') {
+      return selectedAgencyId === agencyId && !includeBranches
+    }
+
+    return selectedAgencyId === agencyId && !includeBranches
+  }
 
   return (
     <div className="space-y-6">
@@ -451,7 +543,7 @@ export function AgencyReportPage() {
                   onClick={() => setAgencySelectorOpen((current) => !current)}
                 >
                   <span className="truncate">
-                    {selectedAgency ? buildAgencyOptionLabel(selectedAgency) : 'Select an agency'}
+                    {report ? getClosedSelectorLabel(report) : selectedAgency ? buildAgencyOptionLabel(selectedAgency) : 'Select an agency'}
                   </span>
                   <ChevronDown className="ml-3 h-4 w-4 shrink-0 text-slate-400" />
                 </button>
@@ -463,45 +555,122 @@ export function AgencyReportPage() {
                       onChange={setAgencySearchText}
                     />
                     <div className="mt-3 max-h-80 space-y-3 overflow-y-auto pr-1">
-                      {(
-                        [
-                          ['Parent Agencies', groupedAgencyOptions.PARENT],
-                          ['Branch Agencies', groupedAgencyOptions.BRANCH],
-                          ['Standalone Agencies', groupedAgencyOptions.STANDALONE],
-                        ] as const
-                      ).map(([title, options]) =>
-                        options.length > 0 ? (
-                          <div key={title}>
-                            <p className="mb-2 text-xs font-semibold uppercase tracking-[0.22em] text-slate-400">
-                              {title}
-                            </p>
-                            <div className="space-y-2">
-                              {options.map((agency) => (
-                                <button
-                                  key={agency.id}
-                                  className={`w-full rounded-2xl border px-3 py-3 text-left text-sm transition ${
-                                    agency.id === selectedAgencyId
-                                      ? 'border-cyan-300/40 bg-cyan-400/10 text-white'
-                                      : 'border-white/10 bg-white/[0.03] text-slate-100 hover:border-cyan-300/30 hover:bg-white/[0.06]'
-                                  }`}
-                                  type="button"
-                                  onClick={() =>
-                                    openAgencyReport(agency.id, {
-                                      includeBranches: getAgencyHierarchyType(agency) === 'PARENT',
-                                    })
-                                  }
+                      {parentTreeOptions.length > 0 ? (
+                        <div>
+                          <p className="mb-2 text-xs font-semibold uppercase tracking-[0.22em] text-slate-400">
+                            Parent Agencies
+                          </p>
+                          <div className="space-y-2">
+                            {parentTreeOptions.map(({ parent, branches }) => {
+                              const expanded = isParentExpanded(parent.id)
+
+                              return (
+                                <div
+                                  key={parent.id}
+                                  className="rounded-2xl border border-white/10 bg-white/[0.03] px-3 py-3"
                                 >
-                                  <p className="font-semibold">{agency.name}</p>
-                                  <p className="mt-1 text-xs text-slate-300">
-                                    {buildAgencyOptionLabel(agency)}
-                                  </p>
-                                </button>
-                              ))}
-                            </div>
+                                  <div className="flex items-start gap-2">
+                                    {branches.length > 0 ? (
+                                      <button
+                                        className="mt-0.5 rounded-full p-1 text-slate-400 transition hover:bg-white/10 hover:text-white"
+                                        type="button"
+                                        onClick={(event) => {
+                                          event.stopPropagation()
+                                          toggleParentExpansion(parent.id)
+                                        }}
+                                      >
+                                        <ChevronRight
+                                          className={`h-4 w-4 transition ${expanded ? 'rotate-90' : ''}`}
+                                        />
+                                      </button>
+                                    ) : (
+                                      <span className="mt-0.5 h-6 w-6 shrink-0" />
+                                    )}
+                                    <div className="min-w-0 flex-1">
+                                      <p className="font-semibold text-white">
+                                        {buildAgencyBaseLabel(parent)} - Parent
+                                      </p>
+                                      <p className="mt-1 text-xs text-slate-300">
+                                        {parent.city} • {parent.country}
+                                      </p>
+                                      {expanded ? (
+                                        <div className="mt-3 space-y-2 border-l border-white/10 pl-3">
+                                          <button
+                                            className={`block w-full rounded-xl px-3 py-2 text-left text-sm transition ${
+                                              isTreeSelectionActive(parent.id, 'consolidated')
+                                                ? 'border border-cyan-300/40 bg-cyan-400/10 text-white'
+                                                : 'border border-transparent bg-white/[0.02] text-slate-100 hover:border-cyan-300/20 hover:bg-white/[0.05]'
+                                            }`}
+                                            type="button"
+                                            onClick={() => openAgencyReport(parent.id, { includeBranches: true })}
+                                          >
+                                            Consolidated Report
+                                          </button>
+                                          <button
+                                            className={`block w-full rounded-xl px-3 py-2 text-left text-sm transition ${
+                                              isTreeSelectionActive(parent.id, 'parent-only')
+                                                ? 'border border-cyan-300/40 bg-cyan-400/10 text-white'
+                                                : 'border border-transparent bg-white/[0.02] text-slate-100 hover:border-cyan-300/20 hover:bg-white/[0.05]'
+                                            }`}
+                                            type="button"
+                                            onClick={() => openAgencyReport(parent.id, { includeBranches: false })}
+                                          >
+                                            Parent Only
+                                          </button>
+                                          {branches.map((branch) => (
+                                            <button
+                                              key={branch.id}
+                                              className={`block w-full rounded-xl px-3 py-2 text-left text-sm transition ${
+                                                isTreeSelectionActive(branch.id, 'branch')
+                                                  ? 'border border-cyan-300/40 bg-cyan-400/10 text-white'
+                                                  : 'border border-transparent bg-white/[0.02] text-slate-100 hover:border-cyan-300/20 hover:bg-white/[0.05]'
+                                              }`}
+                                              type="button"
+                                              onClick={() => openAgencyReport(branch.id)}
+                                            >
+                                              <span className="block text-white">
+                                                {buildAgencyBaseLabel(branch)} - Branch
+                                              </span>
+                                              <span className="mt-1 block text-xs text-slate-300">
+                                                Branch of {parent.name}
+                                              </span>
+                                            </button>
+                                          ))}
+                                        </div>
+                                      ) : null}
+                                    </div>
+                                  </div>
+                                </div>
+                              )
+                            })}
                           </div>
-                        ) : null,
-                      )}
-                      {filteredAgencies.length === 0 ? (
+                        </div>
+                      ) : null}
+                      {filteredStandaloneAgencies.length > 0 ? (
+                        <div>
+                          <p className="mb-2 text-xs font-semibold uppercase tracking-[0.22em] text-slate-400">
+                            Standalone Agencies
+                          </p>
+                          <div className="space-y-2">
+                            {filteredStandaloneAgencies.map((agency) => (
+                              <button
+                                key={agency.id}
+                                className={`w-full rounded-2xl border px-3 py-3 text-left text-sm transition ${
+                                  selectedAgencyId === agency.id && !includeBranches
+                                    ? 'border-cyan-300/40 bg-cyan-400/10 text-white'
+                                    : 'border-white/10 bg-white/[0.03] text-slate-100 hover:border-cyan-300/30 hover:bg-white/[0.06]'
+                                }`}
+                                type="button"
+                                onClick={() => openAgencyReport(agency.id)}
+                              >
+                                <p className="font-semibold">{buildAgencyBaseLabel(agency)}</p>
+                                <p className="mt-1 text-xs text-slate-300">Standalone agency</p>
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      ) : null}
+                      {parentTreeOptions.length === 0 && filteredStandaloneAgencies.length === 0 ? (
                         <p className="rounded-2xl border border-white/10 bg-white/[0.03] px-3 py-4 text-sm text-slate-300">
                           No agencies match this search.
                         </p>
@@ -660,8 +829,8 @@ export function AgencyReportPage() {
       </Panel>
 
       <Panel
-        title="Agency Hierarchy"
-        description="Identify whether the current report belongs to a parent, branch, or standalone agency and navigate directly to connected reports."
+        title="Hierarchy and Scope"
+        description="Review the current agency context and switch between consolidated, parent-only, and branch reports from one hierarchy section."
       >
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           <div className="rounded-[22px] border border-white/10 bg-[rgba(7,15,27,0.45)] px-4 py-4">
@@ -679,7 +848,9 @@ export function AgencyReportPage() {
             </p>
           </div>
           <div className="rounded-[22px] border border-white/10 bg-[rgba(7,15,27,0.45)] px-4 py-4">
-            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">Parent Agency</p>
+            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
+              {report.agency.parentAgency ? 'Parent Agency' : 'Hierarchy'}
+            </p>
             {report.agency.parentAgency ? (
               <button
                 className="mt-3 text-left text-sm font-semibold text-cyan-200 transition hover:text-cyan-100"
@@ -693,64 +864,63 @@ export function AgencyReportPage() {
                 {report.agency.parentAgency.agencyName}
               </button>
             ) : (
-              <p className="mt-3 text-sm font-semibold text-white">Not applicable</p>
+              <p className="mt-3 text-sm font-semibold text-white">Top-level agency</p>
             )}
           </div>
           <div className="rounded-[22px] border border-white/10 bg-[rgba(7,15,27,0.45)] px-4 py-4">
-            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">Agent Number</p>
-            <p className="mt-3 text-sm font-semibold text-white">{report.agency.agentNumber}</p>
+            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">Current Scope</p>
+            <p className="mt-3 text-sm font-semibold text-white">{report.agency.scopeLabel}</p>
           </div>
         </div>
-      </Panel>
 
-      {report.agency.hierarchyType === 'PARENT' ? (
-        <Panel
-          title="Scope Coverage"
-          description="Navigate through the selected parent hierarchy and switch directly between parent or branch reports."
-        >
-          <div className="space-y-3">
-            <div
-              className={`rounded-[22px] border px-4 py-4 ${
-                !report.agency.visibleAgencyFilter
-                  ? 'border-cyan-300/30 bg-cyan-400/10'
-                  : 'border-white/10 bg-[rgba(7,15,27,0.45)]'
-              }`}
-            >
-              <button
-                className="text-left transition hover:text-cyan-100"
-                type="button"
-                onClick={() => openAgencyReport(report.agency.id, { includeBranches: true })}
-              >
-                <p className="text-sm font-semibold text-white">{report.agency.agencyName}</p>
-                <p className="mt-1 text-xs uppercase tracking-[0.18em] text-slate-300">
-                  Parent • {report.agency.agentNumber} • {report.agency.city}
-                </p>
-              </button>
-            </div>
-            {report.agency.branches.map((branch) => (
-              <div
-                key={branch.id}
-                className={`rounded-[22px] border px-4 py-4 ${
-                  report.agency.visibleAgencyFilter?.id === branch.id
-                    ? 'border-cyan-300/30 bg-cyan-400/10'
-                    : 'border-white/10 bg-[rgba(7,15,27,0.45)]'
-                }`}
-              >
+        {report.agency.hierarchyType === 'PARENT' ? (
+          <div className="mt-4 rounded-[22px] border border-white/10 bg-[rgba(7,15,27,0.35)] px-4 py-4">
+            <div className="space-y-2">
+              <p className="text-sm font-semibold text-white">
+                {report.agency.agencyName} ({report.agency.agentNumber})
+              </p>
+              <div className="space-y-2 border-l border-white/10 pl-3">
                 <button
-                  className="text-left transition hover:text-cyan-100"
+                  className={`block w-full rounded-xl px-3 py-2 text-left text-sm transition ${
+                    isTreeSelectionActive(report.agency.id, 'consolidated')
+                      ? 'border border-cyan-300/40 bg-cyan-400/10 text-white'
+                      : 'border border-transparent bg-white/[0.02] text-slate-100 hover:border-cyan-300/20 hover:bg-white/[0.05]'
+                  }`}
                   type="button"
-                  onClick={() => openAgencyReport(branch.id)}
+                  onClick={() => openAgencyReport(report.agency.id, { includeBranches: true })}
                 >
-                  <p className="text-sm font-semibold text-white">└── {branch.agencyName}</p>
-                  <p className="mt-1 text-xs uppercase tracking-[0.18em] text-slate-300">
-                    Branch • {branch.agentNumber} • {branch.city}
-                  </p>
+                  Consolidated Report
                 </button>
+                <button
+                  className={`block w-full rounded-xl px-3 py-2 text-left text-sm transition ${
+                    isTreeSelectionActive(report.agency.id, 'parent-only')
+                      ? 'border border-cyan-300/40 bg-cyan-400/10 text-white'
+                      : 'border border-transparent bg-white/[0.02] text-slate-100 hover:border-cyan-300/20 hover:bg-white/[0.05]'
+                  }`}
+                  type="button"
+                  onClick={() => openAgencyReport(report.agency.id, { includeBranches: false })}
+                >
+                  Parent Only
+                </button>
+                {report.agency.branches.map((branch) => (
+                  <button
+                    key={branch.id}
+                    className={`block w-full rounded-xl px-3 py-2 text-left text-sm transition ${
+                      isTreeSelectionActive(branch.id, 'branch')
+                        ? 'border border-cyan-300/40 bg-cyan-400/10 text-white'
+                        : 'border border-transparent bg-white/[0.02] text-slate-100 hover:border-cyan-300/20 hover:bg-white/[0.05]'
+                    }`}
+                    type="button"
+                    onClick={() => openAgencyReport(branch.id)}
+                  >
+                    {branch.agencyName} ({branch.agentNumber}) - Branch
+                  </button>
+                ))}
               </div>
-            ))}
+            </div>
           </div>
-        </Panel>
-      ) : null}
+        ) : null}
+      </Panel>
 
       <div className="grid gap-4 xl:grid-cols-4">
         {[
@@ -842,7 +1012,7 @@ export function AgencyReportPage() {
               report.groupDetails.map((group) => (
                 <div
                   key={group.groupId}
-                  className="flex flex-col gap-4 rounded-[22px] border border-white/10 bg-white/[0.04] px-4 py-4 lg:flex-row lg:items-center lg:justify-between"
+                  className="grid gap-3 rounded-[18px] border border-white/10 bg-white/[0.04] px-4 py-3 lg:grid-cols-[minmax(0,1fr)_auto_auto] lg:items-center"
                 >
                   <div>
                     <div className="flex flex-wrap items-center gap-2">
@@ -881,19 +1051,14 @@ export function AgencyReportPage() {
                         {group.agencyName}
                       </button>
                     </div>
-                    <p className="mt-1 text-sm text-slate-300">
-                      {formatNumber(group.numberOfPax)} pax • {formatCurrency(group.pricePerPax)} per pax
+                    <p className="mt-1 text-xs text-slate-300">
+                      {formatNumber(group.numberOfPax)} pax • {formatCurrency(group.pricePerPax)} / pax
                     </p>
                   </div>
-                  <div className="flex items-center gap-4">
-                    <div className="text-right">
-                      <p className="text-sm font-semibold text-white">
-                        {formatCurrency(group.groupAmount)}
-                      </p>
-                      <p className="mt-1 text-xs uppercase tracking-[0.18em] text-slate-400">
-                        Group amount
-                      </p>
-                    </div>
+                  <p className="text-right text-sm font-semibold text-white lg:min-w-[110px]">
+                    {formatCurrency(group.groupAmount)}
+                  </p>
+                  <div className="lg:min-w-[160px] lg:text-right">
                     <StatusBadge
                       label={group.paymentStatus.replace(/_/g, ' ')}
                       tone={
@@ -970,10 +1135,7 @@ export function AgencyReportPage() {
               >
                 <div className="flex flex-col gap-4 rounded-[18px] border border-white/10 bg-[rgba(7,15,27,0.35)] px-4 py-4 lg:flex-row lg:items-start lg:justify-between">
                   <div>
-                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
-                      Payment Header
-                    </p>
-                    <p className="mt-2 text-sm font-semibold text-white">{payment.reference}</p>
+                    <p className="text-sm font-semibold text-white">{payment.reference}</p>
                     <p className="mt-1 text-sm text-slate-300">
                       {formatDate(payment.paymentDate)} • Source payment amount{' '}
                       {formatCurrency(payment.sourcePaymentAmount)}
@@ -998,11 +1160,22 @@ export function AgencyReportPage() {
                   <div className="rounded-[18px] border border-white/10 bg-[rgba(7,15,27,0.35)] px-3 py-3">
                     <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Ownership</p>
                     <p className="mt-2 text-sm text-white">
-                      Paid by: <span className="font-semibold">{payment.paidByAgencyName}</span>
+                      {payment.paidByAgencyName === payment.remainingBalanceOwnerAgencyName || payment.remainingSourceBalance <= 0 ? (
+                        <>
+                          Paid by / Owner: <span className="font-semibold">{payment.paidByAgencyName}</span>
+                        </>
+                      ) : (
+                        <>
+                          Paid by: <span className="font-semibold">{payment.paidByAgencyName}</span>
+                        </>
+                      )}
                     </p>
-                    <p className="mt-1 text-sm text-white">
-                      Payment owner: <span className="font-semibold">{payment.paidByAgencyName}</span>
-                    </p>
+                    {payment.paidByAgencyName !== payment.remainingBalanceOwnerAgencyName &&
+                    payment.remainingSourceBalance > 0 ? (
+                      <p className="mt-1 text-sm text-white">
+                        Payment owner: <span className="font-semibold">{payment.paidByAgencyName}</span>
+                      </p>
+                    ) : null}
                     <p className="mt-1 text-sm text-white">
                       {payment.remainingSourceBalance > 0 ? (
                         <>
