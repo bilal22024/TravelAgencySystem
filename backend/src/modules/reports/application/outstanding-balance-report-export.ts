@@ -37,7 +37,7 @@ export function buildOutstandingBalanceReportCsv(report: OutstandingBalanceRepor
   lines.push('')
   lines.push('Rows')
   lines.push(
-    'Agency Name,Country,City,Agent Number,Total Groups,Total Pax,Total Amount,Total Amount Paid,Outstanding Balance,Payment Status,Last Payment Date',
+    'Agency Name,Country,City,Agent Number,Total Groups,Total Pax,Total Amount,Total Allocated To Groups,Outstanding Balance,Agency-Owned Advance Balance,Net Balance,Payment Status,Last Payment Date',
   )
 
   report.rows.forEach((row) => {
@@ -52,6 +52,8 @@ export function buildOutstandingBalanceReportCsv(report: OutstandingBalanceRepor
         formatCurrency(row.totalAmount),
         formatCurrency(row.totalAmountPaid),
         formatCurrency(row.outstandingBalance),
+        formatCurrency(row.advanceBalance),
+        formatCurrency(row.netBalance),
         escapeCsv(row.paymentStatusLabel),
         formatNullableDate(row.lastPaymentDate),
       ].join(','),
@@ -86,8 +88,10 @@ export async function buildOutstandingBalanceReportExcel(report: OutstandingBala
     { header: 'Total Groups', key: 'totalGroups', width: 14 },
     { header: 'Total Pax', key: 'totalPax', width: 12 },
     { header: 'Total Amount', key: 'totalAmount', width: 16 },
-    { header: 'Total Amount Paid', key: 'totalAmountPaid', width: 18 },
+    { header: 'Total Allocated To Groups', key: 'totalAmountPaid', width: 22 },
     { header: 'Outstanding Balance', key: 'outstandingBalance', width: 18 },
+    { header: 'Agency-Owned Advance Balance', key: 'advanceBalance', width: 24 },
+    { header: 'Net Balance', key: 'netBalance', width: 18 },
     { header: 'Payment Status', key: 'paymentStatusLabel', width: 18 },
     { header: 'Last Payment Date', key: 'lastPaymentDate', width: 18 },
   ]
@@ -136,7 +140,10 @@ export async function buildOutstandingBalanceReportPdf(report: OutstandingBalanc
             row.agencyName,
             row.agentNumber,
             row.paymentStatusLabel,
+            `Allocated ${formatCurrency(row.totalAmountPaid)}`,
             `Outstanding ${formatCurrency(row.outstandingBalance)}`,
+            `Advance ${formatCurrency(row.advanceBalance)}`,
+            `Net ${formatCurrency(row.netBalance)}`,
             `Last payment ${formatNullableDate(row.lastPaymentDate)}`,
           ].join(' | '),
         )

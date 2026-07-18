@@ -30,6 +30,9 @@ export async function buildAgencyLedgerPdf(ledger: AgencyLedger) {
     document.text(`Agent Number: ${ledger.agency.agentNumber}`)
     document.text(`Country: ${ledger.agency.country}`)
     document.text(`City: ${ledger.agency.city}`)
+    document.text(
+      `Report Scope: ${ledger.agency.reportScope === 'CONSOLIDATED' ? 'Parent + Branches - Consolidated' : 'Selected agency only'}`,
+    )
     document.text(`Date From: ${formatDate(ledger.filters.dateFrom)}`)
     document.text(`Date To: ${formatDate(ledger.filters.dateTo)}`)
     document.moveDown()
@@ -39,6 +42,8 @@ export async function buildAgencyLedgerPdf(ledger: AgencyLedger) {
     document.text(`Total Debits: ${formatCurrency(ledger.summary.totalDebits)}`)
     document.text(`Total Credits: ${formatCurrency(ledger.summary.totalCredits)}`)
     document.text(`Outstanding Balance: ${formatCurrency(ledger.summary.outstandingBalance)}`)
+    document.text(`Agency-Owned Advance Balance: ${formatCurrency(ledger.summary.advanceBalance)}`)
+    document.text(`Net Balance: ${formatCurrency(ledger.summary.netBalance)}`)
     document.moveDown()
 
     document.fontSize(12).text('Transactions')

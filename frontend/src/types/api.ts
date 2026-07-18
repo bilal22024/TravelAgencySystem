@@ -440,9 +440,11 @@ export type AgencyReportBusinessSummary = {
   totalPassengers: number
   pricePerPax: number
   totalAmount: number
-  totalAmountPaid: number
-  remainingBalance: number
-  advanceBalance: number
+  totalPaymentsReceived: number
+  parentPaymentsAllocatedToAgency: number
+  totalAllocatedToGroups: number
+  outstandingBalance: number
+  agencyOwnedAdvanceBalance: number
   netBalance: number
 }
 
@@ -461,19 +463,24 @@ export type AgencyReportGroupDetail = {
 export type AgencyReportPaymentHistoryItem = {
   id: string
   reference: string
-  amountPaid: number
+  sourcePaymentAmount: number
   currency: string
   paymentMethod: PaymentMethod
   paymentStatus: PaymentStatus
   paymentDate: string
   paymentCity: string
+  paidByAgencyId: string
   paidByAgencyName: string
   paidByAgencyCode: string
   receivedBy: string
   remarks: string
-  allocatedAmount: number
-  remainingBalance: number
-  advanceBalance: number
+  totalAllocatedAmount: number
+  allocatedToVisibleScope: number
+  remainingSourceBalance: number
+  remainingBalanceOwnerAgencyId: string
+  remainingBalanceOwnerAgencyName: string
+  remainingBalanceOwnerAgencyCode: string
+  isOwnedByVisibleScope: boolean
   paymentGroups: Array<{
     groupId: string
     groupNumber: string
@@ -514,9 +521,13 @@ export type AgencyReport = {
   groupDetails: AgencyReportGroupDetail[]
   paymentHistory: AgencyReportPaymentHistoryItem[]
   calculations: {
-    totalRevenue: number
-    totalPaid: number
+    totalGroupAmount: number
+    directPaymentsByAgency: number
+    parentPaymentsAllocatedToAgency: number
+    totalAllocatedToGroups: number
     outstandingBalance: number
+    agencyOwnedAdvanceBalance: number
+    netBalance: number
   }
 }
 

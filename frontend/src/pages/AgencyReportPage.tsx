@@ -143,6 +143,11 @@ export function AgencyReportPage() {
     )
   }
 
+  const reportScopeLabel =
+    report.agency.reportScope === 'CONSOLIDATED'
+      ? 'Parent + Branches - Consolidated'
+      : 'Selected agency only'
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -331,7 +336,7 @@ export function AgencyReportPage() {
             </p>
             <p className="mt-3 text-sm text-slate-100">
               {report.agency.agencyName}
-              {report.filters.includeBranches ? ' • Consolidated' : ' • Single agency'}
+              {` • ${reportScopeLabel}`}
               {report.filters.groupNumber ? ` • ${report.filters.groupNumber}` : ' • All groups'}
               {report.filters.paymentStatus
                 ? ` • ${report.filters.paymentStatus.replace(/_/g, ' ')}`
@@ -387,14 +392,14 @@ export function AgencyReportPage() {
             detail: `${formatNumber(report.businessSummary.totalGroups)} groups in the visible report scope.`,
           },
           {
-            label: 'Total amount paid',
-            value: formatCurrency(report.businessSummary.totalAmountPaid),
-            detail: 'Total payment value captured by the filtered payment history.',
+            label: 'Direct payments',
+            value: formatCurrency(report.businessSummary.totalPaymentsReceived),
+            detail: 'Payments owned by the selected agency or consolidated family scope.',
           },
           {
             label: 'Net balance',
             value: formatCurrency(report.businessSummary.netBalance),
-            detail: 'Outstanding amount after available advance balance is deducted.',
+            detail: 'Outstanding amount after agency-owned advance balance is deducted.',
           },
         ].map((metric) => (
           <div
@@ -420,9 +425,17 @@ export function AgencyReportPage() {
             ['Total Passengers', formatNumber(report.businessSummary.totalPassengers)],
             ['Price Per Pax', formatCurrency(report.businessSummary.pricePerPax)],
             ['Total Amount', formatCurrency(report.businessSummary.totalAmount)],
-            ['Total Amount Paid', formatCurrency(report.businessSummary.totalAmountPaid)],
-            ['Remaining Balance', formatCurrency(report.businessSummary.remainingBalance)],
-            ['Advance Balance', formatCurrency(report.businessSummary.advanceBalance)],
+            ['Total Payments Received', formatCurrency(report.businessSummary.totalPaymentsReceived)],
+            [
+              'Parent Payments Allocated To Agency',
+              formatCurrency(report.businessSummary.parentPaymentsAllocatedToAgency),
+            ],
+            ['Total Allocated To Groups', formatCurrency(report.businessSummary.totalAllocatedToGroups)],
+            ['Outstanding Balance', formatCurrency(report.businessSummary.outstandingBalance)],
+            [
+              'Agency-Owned Advance Balance',
+              formatCurrency(report.businessSummary.agencyOwnedAdvanceBalance),
+            ],
             ['Net Balance', formatCurrency(report.businessSummary.netBalance)],
           ].map(([label, value]) => (
             <div
@@ -498,11 +511,19 @@ export function AgencyReportPage() {
         >
           <div className="space-y-4">
             {[
-              ['Total Revenue', report.calculations.totalRevenue],
-              ['Total Paid', report.calculations.totalPaid],
+              ['Total Group Amount', report.calculations.totalGroupAmount],
+              ['Direct Payments By Agency', report.calculations.directPaymentsByAgency],
+              [
+                'Parent Payments Allocated To Agency',
+                report.calculations.parentPaymentsAllocatedToAgency,
+              ],
+              ['Total Allocated To Groups', report.calculations.totalAllocatedToGroups],
               ['Outstanding Balance', report.calculations.outstandingBalance],
-              ['Advance Balance', report.businessSummary.advanceBalance],
-              ['Net Balance', report.businessSummary.netBalance],
+              [
+                'Agency-Owned Advance Balance',
+                report.calculations.agencyOwnedAdvanceBalance,
+              ],
+              ['Net Balance', report.calculations.netBalance],
             ].map(([label, value]) => (
               <div
                 key={label}
@@ -522,7 +543,7 @@ export function AgencyReportPage() {
 
       <Panel
         title="Payment History"
-        description="The filtered payment ledger for this agency, including city, receiver, method, remarks, and live status."
+          description="Each payment keeps source ownership, allocated amount visible to this report, and the owner of any remaining unallocated balance."
         action={
           agencyReportQuery.isFetching ? (
             <span className="text-xs uppercase tracking-[0.18em] text-slate-400">Refreshing...</span>
@@ -545,7 +566,7 @@ export function AgencyReportPage() {
                 <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                   <div>
                     <p className="text-sm font-semibold text-white">
-                      {formatDate(payment.paymentDate)} • {formatCurrency(payment.amountPaid)}
+                      {formatDate(payment.paymentDate)} • Source {formatCurrency(payment.sourcePaymentAmount)}
                     </p>
                     <p className="mt-1 text-sm text-slate-300">
                       {payment.paymentCity} • {payment.receivedBy} •{' '}
@@ -567,13 +588,23 @@ export function AgencyReportPage() {
                     </p>
                   </div>
                   <div className="flex items-center gap-4">
-                    <div className="text-right">
-                      <p className="text-sm font-semibold text-white">
-                        {formatCurrency(payment.advanceBalance)}
-                      </p>
-                      <p className="mt-1 text-xs uppercase tracking-[0.18em] text-slate-400">
-                        Advance balance
-                      </p>
+                    <div className="grid gap-2 text-right">
+                      <div>
+                        <p className="text-sm font-semibold text-white">
+                          {formatCurrency(payment.allocatedToVisibleScope)}
+                        </p>
+                        <p className="mt-1 text-xs uppercase tracking-[0.18em] text-slate-400">
+                          Allocated To Visible Scope
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-sm font-semibold text-white">
+                          {formatCurrency(payment.remainingSourceBalance)}
+                        </p>
+                        <p className="mt-1 text-xs uppercase tracking-[0.18em] text-slate-400">
+                          Remaining Source Balance
+                        </p>
+                      </div>
                     </div>
                     <StatusBadge
                       label={payment.paymentStatus.replace(/_/g, ' ')}
@@ -585,6 +616,30 @@ export function AgencyReportPage() {
                             : 'neutral'
                       }
                     />
+                  </div>
+                </div>
+                <div className="mt-4 grid gap-3 md:grid-cols-3">
+                  <div className="rounded-[18px] border border-white/10 bg-[rgba(7,15,27,0.35)] px-3 py-3">
+                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
+                      Paid By
+                    </p>
+                    <p className="mt-2 text-sm font-semibold text-white">{payment.paidByAgencyName}</p>
+                  </div>
+                  <div className="rounded-[18px] border border-white/10 bg-[rgba(7,15,27,0.35)] px-3 py-3">
+                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
+                      Total Allocated
+                    </p>
+                    <p className="mt-2 text-sm font-semibold text-white">
+                      {formatCurrency(payment.totalAllocatedAmount)}
+                    </p>
+                  </div>
+                  <div className="rounded-[18px] border border-white/10 bg-[rgba(7,15,27,0.35)] px-3 py-3">
+                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
+                      Remaining Balance Owner
+                    </p>
+                    <p className="mt-2 text-sm font-semibold text-white">
+                      {payment.remainingBalanceOwnerAgencyName}
+                    </p>
                   </div>
                 </div>
               </div>

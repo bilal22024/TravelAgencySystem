@@ -35,6 +35,7 @@ export async function buildPaymentReceiptPdf(receipt: PaymentReceipt) {
 
     document.fontSize(12).text('Agency')
     document.fontSize(10).text(`Agency: ${receipt.agency.agencyName}`)
+    document.text(`Paid By: ${receipt.paidByAgency.agencyName}`)
     document.text(`Agent Number: ${receipt.agency.agentNumber}`)
     document.text(`Country: ${receipt.agency.country}`)
     document.text(`City: ${receipt.agency.city}`)
@@ -53,6 +54,7 @@ export async function buildPaymentReceiptPdf(receipt: PaymentReceipt) {
     document.fontSize(12).text('Payment Totals')
     document.fontSize(10).text(`Current Payment: ${formatCurrency(receipt.currentPaymentAmount)}`)
     document.text(`Allocated Amount: ${formatCurrency(receipt.totalAllocatedAmount)}`)
+    document.text(`Advance Balance: ${formatCurrency(receipt.advanceBalance)}`)
     document.text(`Remarks: ${receipt.remarks || '-'}`)
 
     document.end()

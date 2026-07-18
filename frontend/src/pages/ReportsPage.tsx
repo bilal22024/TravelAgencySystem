@@ -161,7 +161,7 @@ export function ReportsPage() {
         </div>
       </Panel>
 
-      <div className="grid gap-4 xl:grid-cols-5">
+      <div className="grid gap-4 xl:grid-cols-6">
         {[
           {
             label: 'Payments received',
@@ -174,9 +174,9 @@ export function ReportsPage() {
             detail: 'Remaining unpaid balances after live allocation calculations.',
           },
           {
-            label: 'Advance balances',
+            label: 'Agency-owned advances',
             value: formatCurrency(report.totals.advanceBalance),
-            detail: 'Available agency credit balances across the visible reporting scope.',
+            detail: 'Unallocated balances that remain owned by their original payment agencies.',
           },
           {
             label: 'Net balance',
@@ -186,7 +186,7 @@ export function ReportsPage() {
           {
             label: 'Allocated revenue',
             value: formatCurrency(report.totals.allocatedRevenue),
-            detail: `${Math.round(report.totals.allocationCoverageRate * 100)}% allocation coverage for the filtered period.`,
+            detail: `${Math.round(report.totals.allocationCoverageRate * 100)}% of visible payments are allocated to groups.`,
           },
           {
             label: 'Active agencies',
@@ -276,7 +276,7 @@ export function ReportsPage() {
       <div className="grid gap-6 xl:grid-cols-2">
         <Panel
           title="Agency revenue table"
-          description="Agency-level totals for payments, outstanding balances, advance balances, and net position from the live report snapshot."
+          description="Agency-level totals for direct payments, outstanding balances, agency-owned advances, and net position from the live report snapshot."
         >
           <div className="space-y-3">
             {report.agencyRevenue.slice(0, 8).map((agency) => (
@@ -295,7 +295,7 @@ export function ReportsPage() {
                     {formatCurrency(agency.revenue)}
                   </p>
                   <p className="mt-1 text-xs uppercase tracking-[0.18em] text-slate-400">
-                    Outstanding {formatCurrency(agency.outstandingBalance)} • Advance{' '}
+                    Outstanding {formatCurrency(agency.outstandingBalance)} • Agency-Owned Advance{' '}
                     {formatCurrency(agency.advanceBalance)} • Net {formatCurrency(agency.netBalance)}
                   </p>
                 </div>

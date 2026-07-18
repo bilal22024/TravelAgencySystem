@@ -126,6 +126,7 @@ export function buildReportSummary({ payments, agencies, groups, year, month }: 
   const totalAmountByAgency = new Map<string, number>()
   const allocatedAmountByAgency = new Map<string, number>()
   const advanceBalanceByAgency = new Map<string, number>()
+  const agenciesById = new Map(agencies.map((agency) => [agency.id, agency]))
 
   groups.forEach((group) => {
     totalAmountByAgency.set(
@@ -153,32 +154,65 @@ export function buildReportSummary({ payments, agencies, groups, year, month }: 
     })
   })
 
-  paymentSnapshots.forEach((payment) => {
-    const countryBucket = countryRevenueMap.get(payment.country) ?? {
+  function ensureCountryBucket(country: string) {
+    const existingBucket = countryRevenueMap.get(country)
+    if (existingBucket) {
+      return existingBucket
+    }
+
+    const nextBucket = {
       revenue: 0,
       outstandingBalance: 0,
       advanceBalance: 0,
       netBalance: 0,
     }
-    countryBucket.revenue += payment.amount
-    countryRevenueMap.set(payment.country, countryBucket)
+    countryRevenueMap.set(country, nextBucket)
+    return nextBucket
+  }
 
-    const agency = agencies.find((item) => item.id === payment.agencyId)
-    const agencyBucket = agencyRevenueMap.get(payment.agencyId) ?? {
-      agencyId: payment.agencyId,
-      agencyName: payment.agencyName,
+  function ensureAgencyBucket(agencyId: string) {
+    const existingBucket = agencyRevenueMap.get(agencyId)
+    if (existingBucket) {
+      return existingBucket
+    }
+
+    const agency = agenciesById.get(agencyId)
+    const country = agency?.country ?? 'Unspecified'
+    ensureCountryBucket(country)
+
+    const nextBucket = {
+      agencyId,
+      agencyName: agency?.name ?? 'Unknown Agency',
       agencyCode: agency?.code ?? 'N/A',
-      country: payment.country,
+      country,
       revenue: 0,
       outstandingBalance: 0,
       advanceBalance: 0,
       netBalance: 0,
       paymentCount: 0,
     }
+    agencyRevenueMap.set(agencyId, nextBucket)
+    return nextBucket
+  }
 
+  paymentSnapshots.forEach((payment) => {
+    const countryBucket = ensureCountryBucket(payment.country)
+    countryBucket.revenue += payment.amount
+
+    const agencyBucket = ensureAgencyBucket(payment.agencyId)
     agencyBucket.revenue += payment.amount
     agencyBucket.paymentCount += 1
-    agencyRevenueMap.set(payment.agencyId, agencyBucket)
+  })
+
+  const agencyIdsInScope = new Set<string>([
+    ...totalAmountByAgency.keys(),
+    ...allocatedAmountByAgency.keys(),
+    ...advanceBalanceByAgency.keys(),
+    ...paymentSnapshots.map((payment) => payment.agencyId),
+  ])
+
+  agencyIdsInScope.forEach((agencyId) => {
+    ensureAgencyBucket(agencyId)
   })
 
   agencyRevenueMap.forEach((bucket, agencyId) => {

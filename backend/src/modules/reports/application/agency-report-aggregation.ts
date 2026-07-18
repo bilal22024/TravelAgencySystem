@@ -30,6 +30,7 @@ type PaymentGroupLike = {
   group: {
     id: string
     code: string
+    agencyId: string
     agency: {
       id: string
       name: string
@@ -82,6 +83,38 @@ type AgencyReportInput = {
 type GroupAggregate = {
   groupAmount: number
   statuses: PaymentStatus[]
+}
+
+type PaymentHistorySnapshot = {
+  id: string
+  reference: string
+  sourcePaymentAmount: number
+  currency: string
+  paymentMethod: PaymentMethod
+  paymentStatus: PaymentStatus
+  paymentDate: string
+  paymentCity: string
+  paidByAgencyId: string
+  paidByAgencyName: string
+  paidByAgencyCode: string
+  receivedBy: string
+  remarks: string
+  totalAllocatedAmount: number
+  allocatedToVisibleScope: number
+  remainingSourceBalance: number
+  remainingBalanceOwnerAgencyId: string
+  remainingBalanceOwnerAgencyName: string
+  remainingBalanceOwnerAgencyCode: string
+  isOwnedByVisibleScope: boolean
+  paymentGroups: Array<{
+    groupId: string
+    groupNumber: string
+    agencyId: string
+    agencyName: string
+    agencyCode: string
+    allocatedAmount: number
+    notes: string | null
+  }>
 }
 
 function toAmount(value: number | string | { toString(): string }) {
@@ -144,32 +177,41 @@ function deriveGroupPaymentStatus(statuses: PaymentStatus[]) {
 export type AgencyReport = ReturnType<typeof buildAgencyReport>
 
 export function buildAgencyReport({ agency, groups, payments, filters }: AgencyReportInput) {
+  const scopeAgencyIdSet = new Set(filters.scopeAgencyIds)
   const paymentSnapshots = payments
     .filter((payment) => matchesDateRange(payment, filters.dateFrom, filters.dateTo))
     .map((payment) => {
-      const summary = getPaymentSummary(
-        payment.amount.toString(),
-        payment.paymentGroups,
-        payment.status,
-      )
+      const summary = getPaymentSummary(payment.amount.toString(), payment.paymentGroups, payment.status)
+      const visiblePaymentGroups = payment.paymentGroups.filter((paymentGroup) => {
+        return scopeAgencyIdSet.has(paymentGroup.group.agencyId)
+      })
+      const allocatedToVisibleScope = visiblePaymentGroups.reduce((total, paymentGroup) => {
+        return total + Number(toAmount(paymentGroup.allocatedAmount).toFixed(2))
+      }, 0)
+      const isOwnedByVisibleScope = scopeAgencyIdSet.has(payment.agency.id)
 
       return {
         id: payment.id,
         reference: payment.reference,
-        amountPaid: Number(toAmount(payment.amount).toFixed(2)),
+        sourcePaymentAmount: Number(toAmount(payment.amount).toFixed(2)),
         currency: payment.currency,
         paymentMethod: payment.method,
         paymentStatus: summary.status,
         paymentDate: payment.paidAt?.toISOString() ?? payment.createdAt.toISOString(),
         paymentCity: payment.paymentCity ?? payment.agency.city ?? 'Unspecified',
+        paidByAgencyId: payment.agency.id,
         paidByAgencyName: payment.agency.name,
         paidByAgencyCode: payment.agency.code,
         receivedBy: formatReceivedBy(payment.receivedBy),
         remarks: payment.description ?? '-',
-        allocatedAmount: summary.allocatedAmount,
-        remainingBalance: summary.remainingBalance,
-        advanceBalance: Number(summary.remainingBalance.toFixed(2)),
-        paymentGroups: payment.paymentGroups.map((paymentGroup) => ({
+        totalAllocatedAmount: Number(summary.allocatedAmount.toFixed(2)),
+        allocatedToVisibleScope: Number(allocatedToVisibleScope.toFixed(2)),
+        remainingSourceBalance: Number(summary.remainingBalance.toFixed(2)),
+        remainingBalanceOwnerAgencyId: payment.agency.id,
+        remainingBalanceOwnerAgencyName: payment.agency.name,
+        remainingBalanceOwnerAgencyCode: payment.agency.code,
+        isOwnedByVisibleScope,
+        paymentGroups: visiblePaymentGroups.map((paymentGroup) => ({
           groupId: paymentGroup.group.id,
           groupNumber: paymentGroup.group.code,
           agencyId: paymentGroup.group.agency.id,
@@ -181,6 +223,13 @@ export function buildAgencyReport({ agency, groups, payments, filters }: AgencyR
       }
     })
     .filter((payment) => (filters.paymentStatus ? payment.paymentStatus === filters.paymentStatus : true))
+    .filter((payment) => {
+      if (payment.isOwnedByVisibleScope) {
+        return true
+      }
+
+      return payment.allocatedToVisibleScope > 0
+    })
     .sort((left, right) => {
       return new Date(right.paymentDate).getTime() - new Date(left.paymentDate).getTime()
     })
@@ -230,12 +279,20 @@ export function buildAgencyReport({ agency, groups, payments, filters }: AgencyR
 
   const totalPassengers = groupDetails.reduce((total, group) => total + group.numberOfPax, 0)
   const totalGroupAmount = groupDetails.reduce((total, group) => total + group.groupAmount, 0)
-  const totalAllocatedRevenue = groupAggregates.size
+  const totalAllocatedToGroups = groupAggregates.size
     ? Array.from(groupAggregates.values()).reduce((total, group) => total + group.groupAmount, 0)
     : 0
-  const advanceBalance = paymentSnapshots.reduce((total, payment) => total + payment.advanceBalance, 0)
-  const outstandingBalance = Math.max(totalGroupAmount - totalAllocatedRevenue, 0)
-  const totalRevenue = paymentSnapshots.reduce((total, payment) => total + payment.amountPaid, 0)
+  const directPaymentsByAgency = paymentSnapshots.reduce((total, payment) => {
+    return total + (payment.isOwnedByVisibleScope ? payment.sourcePaymentAmount : 0)
+  }, 0)
+  const parentPaymentsAllocatedToAgency = paymentSnapshots.reduce((total, payment) => {
+    return total + (!payment.isOwnedByVisibleScope ? payment.allocatedToVisibleScope : 0)
+  }, 0)
+  const agencyOwnedAdvanceBalance = paymentSnapshots.reduce((total, payment) => {
+    return total + (payment.isOwnedByVisibleScope ? payment.remainingSourceBalance : 0)
+  }, 0)
+  const outstandingBalance = Math.max(totalGroupAmount - totalAllocatedToGroups, 0)
+  const netBalance = outstandingBalance - agencyOwnedAdvanceBalance
 
   return {
     filters: {
@@ -267,17 +324,23 @@ export function buildAgencyReport({ agency, groups, payments, filters }: AgencyR
       totalPassengers,
       pricePerPax: totalPassengers > 0 ? Number((totalGroupAmount / totalPassengers).toFixed(2)) : 0,
       totalAmount: Number(totalGroupAmount.toFixed(2)),
-      totalAmountPaid: Number(totalRevenue.toFixed(2)),
-      remainingBalance: Number(outstandingBalance.toFixed(2)),
-      advanceBalance: Number(advanceBalance.toFixed(2)),
-      netBalance: Number((outstandingBalance - advanceBalance).toFixed(2)),
+      totalPaymentsReceived: Number(directPaymentsByAgency.toFixed(2)),
+      parentPaymentsAllocatedToAgency: Number(parentPaymentsAllocatedToAgency.toFixed(2)),
+      totalAllocatedToGroups: Number(totalAllocatedToGroups.toFixed(2)),
+      outstandingBalance: Number(outstandingBalance.toFixed(2)),
+      agencyOwnedAdvanceBalance: Number(agencyOwnedAdvanceBalance.toFixed(2)),
+      netBalance: Number(netBalance.toFixed(2)),
     },
     groupDetails,
     paymentHistory: paymentSnapshots,
     calculations: {
-      totalRevenue: Number(totalGroupAmount.toFixed(2)),
-      totalPaid: Number(totalAllocatedRevenue.toFixed(2)),
+      totalGroupAmount: Number(totalGroupAmount.toFixed(2)),
+      directPaymentsByAgency: Number(directPaymentsByAgency.toFixed(2)),
+      parentPaymentsAllocatedToAgency: Number(parentPaymentsAllocatedToAgency.toFixed(2)),
+      totalAllocatedToGroups: Number(totalAllocatedToGroups.toFixed(2)),
       outstandingBalance: Number(outstandingBalance.toFixed(2)),
+      agencyOwnedAdvanceBalance: Number(agencyOwnedAdvanceBalance.toFixed(2)),
+      netBalance: Number(netBalance.toFixed(2)),
     },
   }
 }

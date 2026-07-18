@@ -474,18 +474,6 @@ export async function getAgencyReport(authUser: AuthenticatedUser, query: Agency
           },
         },
         paymentGroups: {
-          where: {
-            group: {
-              agencyId: {
-                in: scopedAgency.scopeAgencyIds,
-              },
-              ...(query.groupNumber
-                ? {
-                    code: { contains: query.groupNumber, mode: 'insensitive' },
-                  }
-                : {}),
-            },
-          },
           select: {
             allocatedAmount: true,
             notes: true,
@@ -493,6 +481,7 @@ export async function getAgencyReport(authUser: AuthenticatedUser, query: Agency
               select: {
                 id: true,
                 code: true,
+                agencyId: true,
                 agency: {
                   select: {
                     id: true,

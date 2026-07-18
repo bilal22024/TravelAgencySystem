@@ -90,4 +90,81 @@ describe('report aggregation', () => {
     expect(summary.agencyRevenue[0]?.netBalance).toBe(0)
     expect(summary.outstandingBalances).toHaveLength(1)
   })
+
+  it('counts parent payment remainder once while allocations reduce receiving branch outstanding', () => {
+    const summary = buildReportSummary({
+      year: 2026,
+      agencies: [
+        {
+          id: 'parent-1',
+          name: 'Almuhajir Travel',
+          code: 'ALM',
+          country: 'Saudi Arabia',
+          isActive: true,
+        },
+        {
+          id: 'branch-1',
+          name: 'Ikhlas Travel',
+          code: 'IKH',
+          country: 'Saudi Arabia',
+          isActive: true,
+        },
+        {
+          id: 'branch-2',
+          name: 'Arab Quraishi Travel',
+          code: 'AQT',
+          country: 'Saudi Arabia',
+          isActive: true,
+        },
+      ],
+      groups: [
+        {
+          id: 'group-1',
+          agencyId: 'branch-1',
+          totalAmount: 600,
+        },
+        {
+          id: 'group-2',
+          agencyId: 'branch-2',
+          totalAmount: 500,
+        },
+      ],
+      payments: [
+        {
+          id: 'payment-parent',
+          reference: 'PAY-100',
+          amount: 2000,
+          currency: 'USD',
+          status: 'PARTIALLY_ALLOCATED',
+          paidAt: new Date('2026-06-10T00:00:00.000Z'),
+          createdAt: new Date('2026-06-09T00:00:00.000Z'),
+          agencyId: 'parent-1',
+          agency: {
+            id: 'parent-1',
+            name: 'Almuhajir Travel',
+            code: 'ALM',
+            country: 'Saudi Arabia',
+            isActive: true,
+          },
+          paymentGroups: [
+            { allocatedAmount: 600, group: { id: 'group-1', agencyId: 'branch-1', code: 'IKH-G001' } },
+            { allocatedAmount: 500, group: { id: 'group-2', agencyId: 'branch-2', code: 'AQT-G001' } },
+          ],
+        },
+      ],
+    })
+
+    const parentRow = summary.agencyRevenue.find((item) => item.agencyCode === 'ALM')
+    const ikhRow = summary.agencyRevenue.find((item) => item.agencyCode === 'IKH')
+    const aqtRow = summary.agencyRevenue.find((item) => item.agencyCode === 'AQT')
+
+    expect(summary.totals.totalRevenue).toBe(2000)
+    expect(summary.totals.allocatedRevenue).toBe(1100)
+    expect(summary.totals.advanceBalance).toBe(900)
+    expect(parentRow?.advanceBalance).toBe(900)
+    expect(ikhRow?.advanceBalance).toBe(0)
+    expect(aqtRow?.advanceBalance).toBe(0)
+    expect(ikhRow?.outstandingBalance).toBe(0)
+    expect(aqtRow?.outstandingBalance).toBe(0)
+  })
 })

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { buildAgencyReport } from '../src/modules/reports/application/agency-report-aggregation.js'
 
 describe('agency report aggregation', () => {
-  it('builds agency totals, group rows, and payment history from existing payment allocations', () => {
+  it('builds single-agency totals using direct payments, external allocations, and payer-owned advance separately', () => {
     const report = buildAgencyReport({
       agency: {
         id: 'agency-1',
@@ -66,6 +66,7 @@ describe('agency report aggregation', () => {
               group: {
                 id: 'group-1',
                 code: 'ATL-G001',
+                agencyId: 'agency-1',
                 agency: {
                   id: 'agency-1',
                   name: 'Atlas Travel',
@@ -101,6 +102,7 @@ describe('agency report aggregation', () => {
               group: {
                 id: 'group-2',
                 code: 'ATL-G002',
+                agencyId: 'agency-1',
                 agency: {
                   id: 'agency-1',
                   name: 'Atlas Travel',
@@ -122,22 +124,156 @@ describe('agency report aggregation', () => {
     expect(report.businessSummary.totalGroups).toBe(2)
     expect(report.businessSummary.totalPassengers).toBe(30)
     expect(report.businessSummary.totalAmount).toBe(1000)
-    expect(report.businessSummary.totalAmountPaid).toBe(1600)
-    expect(report.businessSummary.remainingBalance).toBe(0)
-    expect(report.businessSummary.advanceBalance).toBe(600)
+    expect(report.businessSummary.totalPaymentsReceived).toBe(1600)
+    expect(report.businessSummary.parentPaymentsAllocatedToAgency).toBe(0)
+    expect(report.businessSummary.totalAllocatedToGroups).toBe(1000)
+    expect(report.businessSummary.outstandingBalance).toBe(0)
+    expect(report.businessSummary.agencyOwnedAdvanceBalance).toBe(600)
     expect(report.businessSummary.netBalance).toBe(-600)
     expect(report.businessSummary.pricePerPax).toBeCloseTo(33.33, 2)
-    expect(report.calculations.totalRevenue).toBe(1000)
-    expect(report.calculations.totalPaid).toBe(1000)
+    expect(report.calculations.totalGroupAmount).toBe(1000)
+    expect(report.calculations.directPaymentsByAgency).toBe(1600)
+    expect(report.calculations.totalAllocatedToGroups).toBe(1000)
     expect(report.groupDetails[0]?.groupAmount).toBe(400)
     expect(report.groupDetails[1]?.paymentStatus).toBe('ALLOCATED')
     expect(report.paymentHistory[0]?.receivedBy).toBe('Unassigned')
     expect(report.paymentHistory[1]?.paymentStatus).toBe('PARTIALLY_ALLOCATED')
-    expect(report.paymentHistory[1]?.advanceBalance).toBe(600)
+    expect(report.paymentHistory[1]?.remainingSourceBalance).toBe(600)
     expect(report.filters.includeBranches).toBe(false)
   })
 
-  it('builds a consolidated parent report with branch group details and scope metadata', () => {
+  it('does not assign parent-owned advance to a branch report', () => {
+    const report = buildAgencyReport({
+      agency: {
+        id: 'branch-1',
+        name: 'Arab Quraishi Travel',
+        code: 'AQT',
+        city: 'Makkah',
+        country: 'Saudi Arabia',
+      },
+      groups: [
+        {
+          id: 'group-1',
+          code: 'AQT-2506-01',
+          travelerCount: 31,
+          totalAmount: 465,
+          agency: {
+            id: 'branch-1',
+            name: 'Arab Quraishi Travel',
+            code: 'AQT',
+          },
+        },
+      ],
+      payments: [
+        {
+          id: 'payment-parent',
+          reference: 'PAY-PARENT',
+          amount: 2500,
+          currency: 'USD',
+          method: 'BANK_TRANSFER',
+          status: 'PARTIALLY_ALLOCATED',
+          paymentCity: 'Riyadh',
+          description: 'Parent payment',
+          paidAt: new Date('2026-06-10T00:00:00.000Z'),
+          createdAt: new Date('2026-06-09T00:00:00.000Z'),
+          agency: {
+            id: 'parent-1',
+            name: 'Almuhajir Travel',
+            code: 'ALM',
+            city: 'Riyadh',
+            country: 'Saudi Arabia',
+          },
+          receivedBy: null,
+          paymentGroups: [
+            {
+              allocatedAmount: 305,
+              notes: 'Allocated to AQT',
+              group: {
+                id: 'group-1',
+                code: 'AQT-2506-01',
+                agencyId: 'branch-1',
+                agency: {
+                  id: 'branch-1',
+                  name: 'Arab Quraishi Travel',
+                  code: 'AQT',
+                },
+              },
+            },
+            {
+              allocatedAmount: 270,
+              notes: 'Allocated to IKH',
+              group: {
+                id: 'group-2',
+                code: 'IKH-2506-01',
+                agencyId: 'branch-2',
+                agency: {
+                  id: 'branch-2',
+                  name: 'Ikhlas Travel',
+                  code: 'IKH',
+                },
+              },
+            },
+          ],
+        },
+        {
+          id: 'payment-branch',
+          reference: 'PAY-BRANCH',
+          amount: 700,
+          currency: 'USD',
+          method: 'ONLINE',
+          status: 'PARTIALLY_ALLOCATED',
+          paymentCity: 'Makkah',
+          description: 'Branch payment',
+          paidAt: new Date('2026-06-11T00:00:00.000Z'),
+          createdAt: new Date('2026-06-10T00:00:00.000Z'),
+          agency: {
+            id: 'branch-1',
+            name: 'Arab Quraishi Travel',
+            code: 'AQT',
+            city: 'Makkah',
+            country: 'Saudi Arabia',
+          },
+          receivedBy: null,
+          paymentGroups: [
+            {
+              allocatedAmount: 500,
+              notes: 'Allocated to AQT',
+              group: {
+                id: 'group-1',
+                code: 'AQT-2506-01',
+                agencyId: 'branch-1',
+                agency: {
+                  id: 'branch-1',
+                  name: 'Arab Quraishi Travel',
+                  code: 'AQT',
+                },
+              },
+            },
+          ],
+        },
+      ],
+      filters: {
+        includeBranches: false,
+        scopeAgencyIds: ['branch-1'],
+        branches: [],
+      },
+    })
+
+    expect(report.businessSummary.totalAmount).toBe(465)
+    expect(report.businessSummary.totalPaymentsReceived).toBe(700)
+    expect(report.businessSummary.parentPaymentsAllocatedToAgency).toBe(305)
+    expect(report.businessSummary.totalAllocatedToGroups).toBe(805)
+    expect(report.businessSummary.outstandingBalance).toBe(0)
+    expect(report.businessSummary.agencyOwnedAdvanceBalance).toBe(200)
+    expect(report.businessSummary.netBalance).toBe(-200)
+    expect(report.paymentHistory).toHaveLength(2)
+    expect(report.paymentHistory[1]?.sourcePaymentAmount).toBe(2500)
+    expect(report.paymentHistory[1]?.allocatedToVisibleScope).toBe(305)
+    expect(report.paymentHistory[1]?.remainingSourceBalance).toBe(1925)
+    expect(report.paymentHistory[1]?.remainingBalanceOwnerAgencyCode).toBe('ALM')
+  })
+
+  it('builds a consolidated parent report with branch group details and counts each payment and advance once', () => {
     const report = buildAgencyReport({
       agency: {
         id: 'parent-1',
@@ -197,6 +333,7 @@ describe('agency report aggregation', () => {
               group: {
                 id: 'group-parent',
                 code: 'FNT-G001',
+                agencyId: 'parent-1',
                 agency: {
                   id: 'parent-1',
                   name: 'Fida Noor Travel',
@@ -210,6 +347,7 @@ describe('agency report aggregation', () => {
               group: {
                 id: 'group-branch',
                 code: 'ANS-G001',
+                agencyId: 'branch-1',
                 agency: {
                   id: 'branch-1',
                   name: 'Alansar Travel',
@@ -240,8 +378,12 @@ describe('agency report aggregation', () => {
     expect(report.agency.branches).toHaveLength(1)
     expect(report.businessSummary.totalGroups).toBe(2)
     expect(report.businessSummary.totalAmount).toBe(2000)
-    expect(report.businessSummary.totalAmountPaid).toBe(1500)
-    expect(report.businessSummary.advanceBalance).toBe(300)
+    expect(report.businessSummary.totalPaymentsReceived).toBe(1500)
+    expect(report.businessSummary.parentPaymentsAllocatedToAgency).toBe(0)
+    expect(report.businessSummary.totalAllocatedToGroups).toBe(1200)
+    expect(report.businessSummary.outstandingBalance).toBe(800)
+    expect(report.businessSummary.agencyOwnedAdvanceBalance).toBe(300)
+    expect(report.businessSummary.netBalance).toBe(500)
     expect(
       report.groupDetails.find((group) => group.groupNumber === 'ANS-G001')?.agencyCode,
     ).toBe('ANS')
@@ -249,5 +391,7 @@ describe('agency report aggregation', () => {
       report.paymentHistory[0]?.paymentGroups.find((group) => group.groupNumber === 'ANS-G001')
         ?.agencyCode,
     ).toBe('ANS')
+    expect(report.paymentHistory[0]?.allocatedToVisibleScope).toBe(1200)
+    expect(report.paymentHistory[0]?.remainingSourceBalance).toBe(300)
   })
 })

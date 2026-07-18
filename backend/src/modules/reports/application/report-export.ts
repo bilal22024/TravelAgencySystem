@@ -18,9 +18,11 @@ export function buildReportCsv(summary: ReportSummary) {
   lines.push('')
   lines.push('Totals')
   lines.push('Metric,Value')
-  lines.push(`Total Revenue,${formatCurrency(summary.totals.totalRevenue)}`)
+  lines.push(`Total Payments Received,${formatCurrency(summary.totals.totalRevenue)}`)
   lines.push(`Outstanding Balance,${formatCurrency(summary.totals.outstandingBalance)}`)
-  lines.push(`Allocated Revenue,${formatCurrency(summary.totals.allocatedRevenue)}`)
+  lines.push(`Agency-Owned Advance Balance,${formatCurrency(summary.totals.advanceBalance)}`)
+  lines.push(`Net Balance,${formatCurrency(summary.totals.netBalance)}`)
+  lines.push(`Total Allocated To Groups,${formatCurrency(summary.totals.allocatedRevenue)}`)
   lines.push(`Allocation Coverage Rate,${summary.totals.allocationCoverageRate}`)
   lines.push(`Payment Count,${summary.totals.paymentCount}`)
   lines.push(`Active Agency Count,${summary.totals.activeAgencyCount}`)
@@ -32,16 +34,18 @@ export function buildReportCsv(summary: ReportSummary) {
   })
   lines.push('')
   lines.push('Country Revenue')
-  lines.push('Country,Revenue,Outstanding Balance')
+  lines.push('Country,Payments Received,Outstanding Balance,Agency-Owned Advance Balance,Net Balance')
   summary.countryRevenue.forEach((row) => {
-    lines.push(`${escapeCsv(row.country)},${formatCurrency(row.revenue)},${formatCurrency(row.outstandingBalance)}`)
+    lines.push(
+      `${escapeCsv(row.country)},${formatCurrency(row.revenue)},${formatCurrency(row.outstandingBalance)},${formatCurrency(row.advanceBalance)},${formatCurrency(row.netBalance)}`,
+    )
   })
   lines.push('')
   lines.push('Agency Revenue')
-  lines.push('Agency Name,Agency Code,Country,Revenue,Outstanding Balance,Payment Count')
+  lines.push('Agency Name,Agency Code,Country,Payments Received,Outstanding Balance,Agency-Owned Advance Balance,Net Balance,Payment Count')
   summary.agencyRevenue.forEach((row) => {
     lines.push(
-      `${escapeCsv(row.agencyName)},${escapeCsv(row.agencyCode)},${escapeCsv(row.country)},${formatCurrency(row.revenue)},${formatCurrency(row.outstandingBalance)},${row.paymentCount}`,
+      `${escapeCsv(row.agencyName)},${escapeCsv(row.agencyCode)},${escapeCsv(row.country)},${formatCurrency(row.revenue)},${formatCurrency(row.outstandingBalance)},${formatCurrency(row.advanceBalance)},${formatCurrency(row.netBalance)},${row.paymentCount}`,
     )
   })
   lines.push('')
@@ -69,9 +73,11 @@ export async function buildReportExcel(summary: ReportSummary) {
   totalsSheet.addRows([
     { metric: 'Year', value: summary.filters.year },
     { metric: 'Month', value: summary.filters.month ?? 'All' },
-    { metric: 'Total Revenue', value: summary.totals.totalRevenue },
+    { metric: 'Total Payments Received', value: summary.totals.totalRevenue },
     { metric: 'Outstanding Balance', value: summary.totals.outstandingBalance },
-    { metric: 'Allocated Revenue', value: summary.totals.allocatedRevenue },
+    { metric: 'Agency-Owned Advance Balance', value: summary.totals.advanceBalance },
+    { metric: 'Net Balance', value: summary.totals.netBalance },
+    { metric: 'Total Allocated To Groups', value: summary.totals.allocatedRevenue },
     { metric: 'Allocation Coverage Rate', value: summary.totals.allocationCoverageRate },
     { metric: 'Payment Count', value: summary.totals.paymentCount },
     { metric: 'Active Agency Count', value: summary.totals.activeAgencyCount },
@@ -104,9 +110,19 @@ export async function buildReportPdf(summary: ReportSummary) {
     document.moveDown()
 
     document.fontSize(14).text('Totals')
-    writePdfKeyValue(document, 'Total Revenue', formatCurrency(summary.totals.totalRevenue))
+    writePdfKeyValue(document, 'Total Payments Received', formatCurrency(summary.totals.totalRevenue))
     writePdfKeyValue(document, 'Outstanding Balance', formatCurrency(summary.totals.outstandingBalance))
-    writePdfKeyValue(document, 'Allocated Revenue', formatCurrency(summary.totals.allocatedRevenue))
+    writePdfKeyValue(
+      document,
+      'Agency-Owned Advance Balance',
+      formatCurrency(summary.totals.advanceBalance),
+    )
+    writePdfKeyValue(document, 'Net Balance', formatCurrency(summary.totals.netBalance))
+    writePdfKeyValue(
+      document,
+      'Total Allocated To Groups',
+      formatCurrency(summary.totals.allocatedRevenue),
+    )
     writePdfKeyValue(
       document,
       'Allocation Coverage Rate',
@@ -121,6 +137,8 @@ export async function buildReportPdf(summary: ReportSummary) {
       'country',
       'revenue',
       'outstandingBalance',
+      'advanceBalance',
+      'netBalance',
     ])
     writePdfSection(document, 'Agency Revenue', summary.agencyRevenue, [
       'agencyName',
@@ -128,6 +146,8 @@ export async function buildReportPdf(summary: ReportSummary) {
       'country',
       'revenue',
       'outstandingBalance',
+      'advanceBalance',
+      'netBalance',
     ])
     writePdfSection(document, 'Outstanding Balances', summary.outstandingBalances, [
       'reference',

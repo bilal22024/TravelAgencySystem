@@ -283,9 +283,9 @@ export function OutstandingBalanceReportPage() {
                   <th className="px-4 py-2 text-right">Total Groups</th>
                   <th className="px-4 py-2 text-right">Total Pax</th>
                   <th className="px-4 py-2 text-right">Total Amount</th>
-                  <th className="px-4 py-2 text-right">Total Amount Paid</th>
+                  <th className="px-4 py-2 text-right">Total Allocated To Groups</th>
                   <th className="px-4 py-2 text-right">Outstanding Balance</th>
-                  <th className="px-4 py-2 text-right">Advance Balance</th>
+                  <th className="px-4 py-2 text-right">Agency-Owned Advance Balance</th>
                   <th className="px-4 py-2 text-right">Net Balance</th>
                   <th className="px-4 py-2">Payment Status</th>
                   <th className="px-4 py-2">Last Payment Date</th>
