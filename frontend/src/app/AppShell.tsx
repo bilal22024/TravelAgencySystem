@@ -15,6 +15,13 @@ export function AppShell({ children }: AppShellProps) {
   const user = useAuthStore((state) => state.user)
 
   const routeMeta = useMemo(() => {
+    if (location.pathname.startsWith('/agencies/')) {
+      return {
+        title: 'Agency Details',
+        subtitle: 'Review hierarchy, profile details, branches, and the current finance snapshot',
+      }
+    }
+
     if (location.pathname.startsWith('/groups/') && location.pathname !== '/groups/add') {
       return {
         title: 'Group Details',

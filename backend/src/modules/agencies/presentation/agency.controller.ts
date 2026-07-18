@@ -4,6 +4,8 @@ import { asyncHandler } from '../../../common/http/async-handler.js'
 import {
   agencyIdParamsSchema,
   agencyListQuerySchema,
+  agencyLookupQuerySchema,
+  agencySummaryQuerySchema,
   createAgencySchema,
   updateAgencySchema,
 } from '../dto/agency.schema.js'
@@ -12,6 +14,7 @@ import {
   deleteAgency,
   getAgencyById,
   listAgencies,
+  lookupAgencies,
   updateAgency,
 } from '../application/agency.service.js'
 
@@ -30,9 +33,17 @@ export const listAgenciesController = asyncHandler(async (request: Request, resp
   return response.status(200).json(agencies)
 })
 
+export const lookupAgenciesController = asyncHandler(async (request: Request, response: Response) => {
+  const query = agencyLookupQuerySchema.parse(request.query)
+  const agencies = await lookupAgencies(requireAuthUser(request), query)
+
+  return response.status(200).json({ data: agencies })
+})
+
 export const getAgencyController = asyncHandler(async (request: Request, response: Response) => {
   const { id } = agencyIdParamsSchema.parse(request.params)
-  const agency = await getAgencyById(id, requireAuthUser(request))
+  const query = agencySummaryQuerySchema.parse(request.query)
+  const agency = await getAgencyById(id, requireAuthUser(request), query)
 
   return response.status(200).json({ data: agency })
 })

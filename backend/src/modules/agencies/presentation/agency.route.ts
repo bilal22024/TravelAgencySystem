@@ -6,6 +6,7 @@ import {
   deleteAgencyController,
   getAgencyController,
   listAgenciesController,
+  lookupAgenciesController,
   updateAgencyController,
 } from './agency.controller.js'
 
@@ -14,6 +15,7 @@ export const agencyRouter = Router()
 agencyRouter.use(authenticate)
 
 agencyRouter.get('/', listAgenciesController)
+agencyRouter.get('/lookup', lookupAgenciesController)
 agencyRouter.get('/:id', getAgencyController)
 agencyRouter.post('/', requireRole(['SUPER_ADMIN']), createAgencyController)
 agencyRouter.patch('/:id', requireRole(['SUPER_ADMIN']), updateAgencyController)

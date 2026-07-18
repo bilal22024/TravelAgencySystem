@@ -2,6 +2,7 @@ import { Route, Routes } from 'react-router-dom'
 import { ProtectedApp } from '@/features/auth/components/ProtectedApp'
 import { PublicOnlyRoute } from '@/features/auth/components/PublicOnlyRoute'
 import { AgencyLedgerPage } from '@/pages/AgencyLedgerPage'
+import { AgencyDetailsPage } from '@/pages/AgencyDetailsPage'
 import { AgencyReportPage } from '@/pages/AgencyReportPage'
 import { AgenciesPage } from '@/pages/AgenciesPage'
 import { AddGroupsPage } from '@/pages/AddGroupsPage'
@@ -23,6 +24,7 @@ export function AppRoutes() {
       <Route element={<ProtectedApp />}>
         <Route path="/" element={<DashboardPage />} />
         <Route path="/agencies" element={<AgenciesPage />} />
+        <Route path="/agencies/:id" element={<AgencyDetailsPage />} />
         <Route path="/groups/add" element={<AddGroupsPage />} />
         <Route path="/groups" element={<GroupsPage />} />
         <Route path="/groups/:id" element={<GroupDetailsPage />} />

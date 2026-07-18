@@ -5,6 +5,8 @@ export type UserRole =
   | 'ACCOUNTANT'
   | 'OPERATIONS'
 
+export type AgencyType = 'PARENT' | 'BRANCH'
+
 export type GroupStatus =
   | 'PLANNED'
   | 'CONFIRMED'
@@ -44,8 +46,13 @@ export type PublicUser = {
 
 export type Agency = {
   id: string
+  parentAgencyId: string | null
   name: string
   code: string
+  agencyType: AgencyType
+  category: string | null
+  openingBalance: number
+  primaryContactPerson: string | null
   contactEmail: string | null
   contactPhone: string | null
   addressLine1: string | null
@@ -54,9 +61,118 @@ export type Agency = {
   state: string | null
   country: string | null
   postalCode: string | null
+  notes: string | null
   isActive: boolean
   createdAt: string
   updatedAt: string
+}
+
+export type AgencyPhoneNumber = {
+  id: string
+  agencyId: string
+  label: string | null
+  phoneNumber: string
+  isPrimary: boolean
+  sortOrder: number
+  createdAt: string
+  updatedAt: string
+}
+
+export type AgencyEmailAddress = {
+  id: string
+  agencyId: string
+  label: string | null
+  email: string
+  isPrimary: boolean
+  sortOrder: number
+  createdAt: string
+  updatedAt: string
+}
+
+export type AgencyDocument = {
+  id: string
+  agencyId: string
+  documentName: string
+  documentType: string | null
+  fileUrl: string | null
+  notes: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+export type AgencyListItem = Agency & {
+  parentAgency?: {
+    id: string
+    name: string
+    code: string
+    agencyType: AgencyType
+  } | null
+  branchCount: number
+}
+
+export type AgencyLookupItem = {
+  id: string
+  name: string
+  code: string
+  agencyType: AgencyType
+  category: string | null
+  city: string | null
+  country: string | null
+  isActive: boolean
+  parentAgency?: {
+    id: string
+    name: string
+    code: string
+  } | null
+}
+
+export type AgencyFinancialSummary = {
+  totalBranches: number
+  totalGroups: number
+  totalPax: number
+  totalGroupAmount: number
+  totalPaymentsReceived: number
+  outstandingBalance: number
+  scopeAgencyIds: string[]
+  includeBranches: boolean
+}
+
+export type AgencyBranchSummary = {
+  id: string
+  name: string
+  code: string
+  agencyType: AgencyType
+  category: string | null
+  city: string | null
+  country: string | null
+  isActive: boolean
+  createdAt: string
+  updatedAt: string
+  _count: {
+    groups: number
+    payments: number
+  }
+}
+
+export type AgencyDetail = Agency & {
+  parentAgency?: {
+    id: string
+    name: string
+    code: string
+    agencyType: AgencyType
+    category: string | null
+  } | null
+  branches: AgencyBranchSummary[]
+  phoneNumbers: AgencyPhoneNumber[]
+  emailAddresses: AgencyEmailAddress[]
+  documents: AgencyDocument[]
+  branchCount: number
+  counts: {
+    groups: number
+    payments: number
+    users: number
+  }
+  summary: AgencyFinancialSummary
 }
 
 export type Group = {

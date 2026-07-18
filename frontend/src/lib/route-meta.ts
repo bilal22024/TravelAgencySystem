@@ -30,7 +30,7 @@ export const navigationItems: NavigationItem[] = [
   {
     href: '/agencies',
     title: 'Agencies',
-    subtitle: 'Manage travel partners and branch details',
+    subtitle: 'Manage parent agencies, branch relationships, and finance-ready profiles',
     icon: Building2,
   },
   {
