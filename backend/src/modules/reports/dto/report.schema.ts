@@ -21,6 +21,7 @@ export const agencyReportQuerySchema = z
   .object({
     agencyId: uuidSchema.optional(),
     includeBranches: z.coerce.boolean().optional().default(false),
+    familyAgencyId: uuidSchema.optional(),
     dateFrom: isoDateSchema.optional(),
     dateTo: isoDateSchema.optional(),
     groupNumber: optionalTrimmedString(30),

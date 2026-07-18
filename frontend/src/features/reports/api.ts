@@ -22,6 +22,7 @@ export type ReportQueryParams = {
 export type AgencyReportQueryParams = {
   agencyId?: string
   includeBranches?: boolean
+  familyAgencyId?: string
   dateFrom?: string
   dateTo?: string
   groupNumber?: string
@@ -69,6 +70,7 @@ export async function getAgencyReport(params: AgencyReportQueryParams) {
     `/reports/agency${buildQueryString({
       agencyId: params.agencyId,
       includeBranches: params.includeBranches,
+      familyAgencyId: params.familyAgencyId,
       dateFrom: params.dateFrom,
       dateTo: params.dateTo,
       groupNumber: params.groupNumber,
@@ -181,6 +183,7 @@ export async function downloadAgencyReportExport(
     `${environment.apiBaseUrl}/reports/agency/export/${format}${buildQueryString({
       agencyId: params.agencyId,
       includeBranches: params.includeBranches,
+      familyAgencyId: params.familyAgencyId,
       dateFrom: params.dateFrom,
       dateTo: params.dateTo,
       groupNumber: params.groupNumber,

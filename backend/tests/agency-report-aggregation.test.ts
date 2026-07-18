@@ -116,6 +116,7 @@ describe('agency report aggregation', () => {
       filters: {
         includeBranches: false,
         scopeAgencyIds: ['agency-1'],
+        visibleAgencyIds: ['agency-1'],
         branches: [],
       },
     })
@@ -150,6 +151,14 @@ describe('agency report aggregation', () => {
         code: 'AQT',
         city: 'Makkah',
         country: 'Saudi Arabia',
+        parentAgency: {
+          id: 'parent-1',
+          name: 'Almuhajir Travel',
+          code: 'ALM',
+          city: 'Riyadh',
+          country: 'Saudi Arabia',
+          agencyType: 'PARENT',
+        },
       },
       groups: [
         {
@@ -255,6 +264,7 @@ describe('agency report aggregation', () => {
       filters: {
         includeBranches: false,
         scopeAgencyIds: ['branch-1'],
+        visibleAgencyIds: ['branch-1'],
         branches: [],
       },
     })
@@ -361,6 +371,7 @@ describe('agency report aggregation', () => {
       filters: {
         includeBranches: true,
         scopeAgencyIds: ['parent-1', 'branch-1'],
+        visibleAgencyIds: ['parent-1', 'branch-1'],
         branches: [
           {
             id: 'branch-1',
@@ -368,6 +379,7 @@ describe('agency report aggregation', () => {
             code: 'ANS',
             city: 'Makkah',
             country: 'Saudi Arabia',
+            agencyType: 'BRANCH',
           },
         ],
       },
@@ -393,5 +405,149 @@ describe('agency report aggregation', () => {
     ).toBe('ANS')
     expect(report.paymentHistory[0]?.allocatedToVisibleScope).toBe(1200)
     expect(report.paymentHistory[0]?.remainingSourceBalance).toBe(300)
+    expect(report.businessSummary.parentOwnedPayments).toBe(1500)
+    expect(report.businessSummary.branchOwnedPayments).toBe(0)
+  })
+
+  it('supports consolidated scope filtered to one agency within the family', () => {
+    const report = buildAgencyReport({
+      agency: {
+        id: 'parent-1',
+        name: 'Alansar Travel',
+        code: 'ANS',
+        city: 'Dammam',
+        country: 'Saudi Arabia',
+      },
+      groups: [
+        {
+          id: 'group-branch',
+          code: 'MUT-2506-01',
+          travelerCount: 27,
+          totalAmount: 270,
+          agency: {
+            id: 'branch-1',
+            name: 'Mutamer Travel',
+            code: 'MUT',
+          },
+        },
+      ],
+      payments: [
+        {
+          id: 'payment-parent',
+          reference: 'ANS-001',
+          amount: 500,
+          currency: 'USD',
+          method: 'BANK_TRANSFER',
+          status: 'PARTIALLY_ALLOCATED',
+          paymentCity: 'Dammam',
+          description: 'Parent payment',
+          paidAt: new Date('2026-06-10T00:00:00.000Z'),
+          createdAt: new Date('2026-06-09T00:00:00.000Z'),
+          agency: {
+            id: 'parent-1',
+            name: 'Alansar Travel',
+            code: 'ANS',
+            city: 'Dammam',
+            country: 'Saudi Arabia',
+          },
+          receivedBy: null,
+          paymentGroups: [
+            {
+              allocatedAmount: 100,
+              notes: null,
+              group: {
+                id: 'group-parent',
+                code: 'ANS-2506-01',
+                agencyId: 'parent-1',
+                agency: {
+                  id: 'parent-1',
+                  name: 'Alansar Travel',
+                  code: 'ANS',
+                },
+              },
+            },
+            {
+              allocatedAmount: 200,
+              notes: null,
+              group: {
+                id: 'group-branch',
+                code: 'MUT-2506-01',
+                agencyId: 'branch-1',
+                agency: {
+                  id: 'branch-1',
+                  name: 'Mutamer Travel',
+                  code: 'MUT',
+                },
+              },
+            },
+          ],
+        },
+        {
+          id: 'payment-branch',
+          reference: 'MUT-001',
+          amount: 250,
+          currency: 'USD',
+          method: 'CASH',
+          status: 'ALLOCATED',
+          paymentCity: 'Madinah',
+          description: 'Branch payment',
+          paidAt: new Date('2026-06-12T00:00:00.000Z'),
+          createdAt: new Date('2026-06-11T00:00:00.000Z'),
+          agency: {
+            id: 'branch-1',
+            name: 'Mutamer Travel',
+            code: 'MUT',
+            city: 'Madinah',
+            country: 'Saudi Arabia',
+          },
+          receivedBy: null,
+          paymentGroups: [
+            {
+              allocatedAmount: 70,
+              notes: null,
+              group: {
+                id: 'group-branch',
+                code: 'MUT-2506-01',
+                agencyId: 'branch-1',
+                agency: {
+                  id: 'branch-1',
+                  name: 'Mutamer Travel',
+                  code: 'MUT',
+                },
+              },
+            },
+          ],
+        },
+      ],
+      filters: {
+        includeBranches: true,
+        scopeAgencyIds: ['parent-1', 'branch-1'],
+        visibleAgencyIds: ['branch-1'],
+        visibleAgency: {
+          id: 'branch-1',
+          name: 'Mutamer Travel',
+          code: 'MUT',
+          city: 'Madinah',
+          country: 'Saudi Arabia',
+          agencyType: 'BRANCH',
+        },
+        branches: [
+          {
+            id: 'branch-1',
+            name: 'Mutamer Travel',
+            code: 'MUT',
+            city: 'Madinah',
+            country: 'Saudi Arabia',
+            agencyType: 'BRANCH',
+          },
+        ],
+      },
+    })
+
+    expect(report.agency.scopeLabel).toContain('Filtered to Mutamer Travel')
+    expect(report.agency.visibleAgencyFilter?.agentNumber).toBe('MUT')
+    expect(report.businessSummary.totalAmount).toBe(270)
+    expect(report.businessSummary.totalPaymentsReceived).toBe(250)
+    expect(report.businessSummary.parentPaymentsAllocatedToAgency).toBe(200)
   })
 })

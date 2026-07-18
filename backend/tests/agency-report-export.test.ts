@@ -33,6 +33,14 @@ describe('agency report exports', () => {
         code: 'AQT',
         city: 'Makkah',
         country: 'Saudi Arabia',
+        parentAgency: {
+          id: 'parent-1',
+          name: 'Almuhajir Travel',
+          code: 'ALM',
+          city: 'Riyadh',
+          country: 'Saudi Arabia',
+          agencyType: 'PARENT',
+        },
       },
       groups: [
         {
@@ -124,6 +132,7 @@ describe('agency report exports', () => {
       filters: {
         includeBranches: false,
         scopeAgencyIds: ['branch-1'],
+        visibleAgencyIds: ['branch-1'],
         branches: [],
       },
     })
@@ -141,16 +150,16 @@ describe('agency report exports', () => {
     expect(report.businessSummary.agencyOwnedAdvanceBalance).toBe(200)
     expect(report.businessSummary.netBalance).toBe(-200)
 
-    expect(csv).toContain('Total Payments Received,700.00')
-    expect(csv).toContain('Parent Payments Allocated To Agency,300.00')
-    expect(csv).toContain('Total Allocated To Groups,800.00')
-    expect(csv).toContain('Agency-Owned Advance Balance,200.00')
+    expect(csv).toContain('Direct Payments by Branch,700.00')
+    expect(csv).toContain('Parent Payments Allocated to Branch,300.00')
+    expect(csv).toContain('Total Allocated to Branch Groups,800.00')
+    expect(csv).toContain('Branch-Owned Advance Balance,200.00')
     expect(csv).toContain('Net Balance,-200.00')
 
-    expect(getMetricValue(summarySheet, 'Total Payments Received')).toBe(700)
-    expect(getMetricValue(summarySheet, 'Parent Payments Allocated To Agency')).toBe(300)
+    expect(getMetricValue(summarySheet, 'Direct Payments by Branch')).toBe(700)
+    expect(getMetricValue(summarySheet, 'Parent Payments Allocated to Branch')).toBe(300)
     expect(getMetricValue(summarySheet, 'Outstanding Balance')).toBe(0)
-    expect(getMetricValue(summarySheet, 'Agency-Owned Advance Balance')).toBe(200)
+    expect(getMetricValue(summarySheet, 'Branch-Owned Advance Balance')).toBe(200)
     expect(getMetricValue(summarySheet, 'Net Balance')).toBe(-200)
 
     expect(pdfBuffer.byteLength).toBeGreaterThan(0)

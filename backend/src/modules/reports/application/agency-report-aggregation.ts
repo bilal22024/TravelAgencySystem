@@ -1,4 +1,5 @@
 import type {
+  AgencyType,
   PaymentMethod,
   PaymentStatus,
 } from '@prisma/client'
@@ -10,6 +11,15 @@ type AgencyLike = {
   code: string
   city: string | null
   country: string | null
+  agencyType?: AgencyType
+  parentAgency?: {
+    id: string
+    name: string
+    code: string
+    city: string | null
+    country: string | null
+    agencyType: AgencyType
+  } | null
 }
 
 type GroupLike = {
@@ -70,12 +80,22 @@ type AgencyReportInput = {
     paymentStatus?: PaymentStatus
     includeBranches: boolean
     scopeAgencyIds: string[]
+    visibleAgencyIds: string[]
+    visibleAgency?: {
+      id: string
+      name: string
+      code: string
+      city: string | null
+      country: string | null
+      agencyType: AgencyType
+    }
     branches: Array<{
       id: string
       name: string
       code: string
       city: string | null
       country: string | null
+      agencyType: AgencyType
     }>
   }
 }
@@ -83,38 +103,6 @@ type AgencyReportInput = {
 type GroupAggregate = {
   groupAmount: number
   statuses: PaymentStatus[]
-}
-
-type PaymentHistorySnapshot = {
-  id: string
-  reference: string
-  sourcePaymentAmount: number
-  currency: string
-  paymentMethod: PaymentMethod
-  paymentStatus: PaymentStatus
-  paymentDate: string
-  paymentCity: string
-  paidByAgencyId: string
-  paidByAgencyName: string
-  paidByAgencyCode: string
-  receivedBy: string
-  remarks: string
-  totalAllocatedAmount: number
-  allocatedToVisibleScope: number
-  remainingSourceBalance: number
-  remainingBalanceOwnerAgencyId: string
-  remainingBalanceOwnerAgencyName: string
-  remainingBalanceOwnerAgencyCode: string
-  isOwnedByVisibleScope: boolean
-  paymentGroups: Array<{
-    groupId: string
-    groupNumber: string
-    agencyId: string
-    agencyName: string
-    agencyCode: string
-    allocatedAmount: number
-    notes: string | null
-  }>
 }
 
 function toAmount(value: number | string | { toString(): string }) {
@@ -174,10 +162,59 @@ function deriveGroupPaymentStatus(statuses: PaymentStatus[]) {
   return 'PARTIALLY_ALLOCATED' as PaymentStatus
 }
 
+function getHierarchyType(
+  agency: AgencyLike,
+  branches: AgencyReportInput['filters']['branches'],
+) {
+  if (agency.parentAgency) {
+    return 'BRANCH' as const
+  }
+
+  if (branches.length > 0) {
+    return 'PARENT' as const
+  }
+
+  return 'STANDALONE' as const
+}
+
+function buildScopeLabel({
+  hierarchyType,
+  includeBranches,
+  visibleAgency,
+}: {
+  hierarchyType: 'PARENT' | 'BRANCH' | 'STANDALONE'
+  includeBranches: boolean
+  visibleAgency?: AgencyReportInput['filters']['visibleAgency']
+}) {
+  if (includeBranches && visibleAgency) {
+    return `Parent + Branches - Consolidated (Filtered to ${visibleAgency.name})`
+  }
+
+  if (includeBranches) {
+    return 'Parent + Branches - Consolidated'
+  }
+
+  if (hierarchyType === 'PARENT') {
+    return 'Parent Only'
+  }
+
+  if (hierarchyType === 'BRANCH') {
+    return 'Selected Branch Only'
+  }
+
+  return 'Selected Agency Only'
+}
+
 export type AgencyReport = ReturnType<typeof buildAgencyReport>
 
 export function buildAgencyReport({ agency, groups, payments, filters }: AgencyReportInput) {
-  const scopeAgencyIdSet = new Set(filters.scopeAgencyIds)
+  const scopeAgencyIdSet = new Set(filters.visibleAgencyIds)
+  const hierarchyType = getHierarchyType(agency, filters.branches)
+  const scopeLabel = buildScopeLabel({
+    hierarchyType,
+    includeBranches: filters.includeBranches,
+    visibleAgency: filters.visibleAgency,
+  })
   const paymentSnapshots = payments
     .filter((payment) => matchesDateRange(payment, filters.dateFrom, filters.dateTo))
     .map((payment) => {
@@ -285,6 +322,12 @@ export function buildAgencyReport({ agency, groups, payments, filters }: AgencyR
   const directPaymentsByAgency = paymentSnapshots.reduce((total, payment) => {
     return total + (payment.isOwnedByVisibleScope ? payment.sourcePaymentAmount : 0)
   }, 0)
+  const parentOwnedPayments = paymentSnapshots.reduce((total, payment) => {
+    return total + (payment.paidByAgencyId === agency.id ? payment.sourcePaymentAmount : 0)
+  }, 0)
+  const branchOwnedPayments = paymentSnapshots.reduce((total, payment) => {
+    return total + (payment.paidByAgencyId !== agency.id && payment.isOwnedByVisibleScope ? payment.sourcePaymentAmount : 0)
+  }, 0)
   const parentPaymentsAllocatedToAgency = paymentSnapshots.reduce((total, payment) => {
     return total + (!payment.isOwnedByVisibleScope ? payment.allocatedToVisibleScope : 0)
   }, 0)
@@ -302,6 +345,7 @@ export function buildAgencyReport({ agency, groups, payments, filters }: AgencyR
       groupNumber: filters.groupCode ?? null,
       paymentStatus: filters.paymentStatus ?? null,
       includeBranches: filters.includeBranches,
+      familyAgencyId: filters.visibleAgency?.id ?? null,
     },
     agency: {
       id: agency.id,
@@ -309,14 +353,45 @@ export function buildAgencyReport({ agency, groups, payments, filters }: AgencyR
       country: agency.country ?? 'Unspecified',
       city: agency.city ?? 'Unspecified',
       agentNumber: agency.code,
+      agencyType: agency.agencyType ?? 'PARENT',
+      hierarchyType,
       reportScope: filters.includeBranches ? 'CONSOLIDATED' : 'SINGLE',
+      scopeLabel,
       scopeAgencyIds: filters.scopeAgencyIds,
+      visibleAgencyIds: filters.visibleAgencyIds,
+      visibleAgencyFilter: filters.visibleAgency
+        ? {
+            id: filters.visibleAgency.id,
+            agencyName: filters.visibleAgency.name,
+            agentNumber: filters.visibleAgency.code,
+            city: filters.visibleAgency.city ?? 'Unspecified',
+            country: filters.visibleAgency.country ?? 'Unspecified',
+            agencyType: filters.visibleAgency.agencyType,
+            hierarchyType:
+              filters.visibleAgency.id === agency.id
+                ? hierarchyType === 'STANDALONE'
+                  ? 'STANDALONE'
+                  : 'PARENT'
+                : 'BRANCH',
+          }
+        : null,
+      parentAgency: agency.parentAgency
+        ? {
+            id: agency.parentAgency.id,
+            agencyName: agency.parentAgency.name,
+            agentNumber: agency.parentAgency.code,
+            city: agency.parentAgency.city ?? 'Unspecified',
+            country: agency.parentAgency.country ?? 'Unspecified',
+            agencyType: agency.parentAgency.agencyType,
+          }
+        : null,
       branches: filters.branches.map((branch) => ({
         id: branch.id,
         agencyName: branch.name,
         agentNumber: branch.code,
         city: branch.city ?? 'Unspecified',
         country: branch.country ?? 'Unspecified',
+        agencyType: branch.agencyType,
       })),
     },
     businessSummary: {
@@ -325,6 +400,8 @@ export function buildAgencyReport({ agency, groups, payments, filters }: AgencyR
       pricePerPax: totalPassengers > 0 ? Number((totalGroupAmount / totalPassengers).toFixed(2)) : 0,
       totalAmount: Number(totalGroupAmount.toFixed(2)),
       totalPaymentsReceived: Number(directPaymentsByAgency.toFixed(2)),
+      parentOwnedPayments: Number(parentOwnedPayments.toFixed(2)),
+      branchOwnedPayments: Number(branchOwnedPayments.toFixed(2)),
       parentPaymentsAllocatedToAgency: Number(parentPaymentsAllocatedToAgency.toFixed(2)),
       totalAllocatedToGroups: Number(totalAllocatedToGroups.toFixed(2)),
       outstandingBalance: Number(outstandingBalance.toFixed(2)),
@@ -336,6 +413,8 @@ export function buildAgencyReport({ agency, groups, payments, filters }: AgencyR
     calculations: {
       totalGroupAmount: Number(totalGroupAmount.toFixed(2)),
       directPaymentsByAgency: Number(directPaymentsByAgency.toFixed(2)),
+      parentOwnedPayments: Number(parentOwnedPayments.toFixed(2)),
+      branchOwnedPayments: Number(branchOwnedPayments.toFixed(2)),
       parentPaymentsAllocatedToAgency: Number(parentPaymentsAllocatedToAgency.toFixed(2)),
       totalAllocatedToGroups: Number(totalAllocatedToGroups.toFixed(2)),
       outstandingBalance: Number(outstandingBalance.toFixed(2)),

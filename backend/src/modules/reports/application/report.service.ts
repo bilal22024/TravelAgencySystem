@@ -109,6 +109,7 @@ async function getScopedReportAgency(
   accessibleAgencyIds: string[] | null,
   requestedAgencyId: string | undefined,
   requestedIncludeBranches: boolean | undefined,
+  requestedFamilyAgencyId?: string,
 ) {
   const agencyId = getScopedAgencyId(authUser, accessibleAgencyIds, requestedAgencyId)
   const agency = await prisma.agency.findFirst({
@@ -124,6 +125,16 @@ async function getScopedReportAgency(
       country: true,
       openingBalance: true,
       agencyType: true,
+      parentAgency: {
+        select: {
+          id: true,
+          name: true,
+          code: true,
+          city: true,
+          country: true,
+          agencyType: true,
+        },
+      },
       branches: {
         select: {
           id: true,
@@ -131,6 +142,7 @@ async function getScopedReportAgency(
           code: true,
           city: true,
           country: true,
+          agencyType: true,
         },
         orderBy: {
           name: 'asc',
@@ -147,11 +159,34 @@ async function getScopedReportAgency(
   const scopeAgencyIds = includeBranches
     ? [agency.id, ...agency.branches.map((branch) => branch.id)]
     : [agency.id]
+  const familyAgencyId =
+    includeBranches && requestedFamilyAgencyId && scopeAgencyIds.includes(requestedFamilyAgencyId)
+      ? requestedFamilyAgencyId
+      : undefined
+
+  if (requestedFamilyAgencyId && includeBranches && !familyAgencyId) {
+    throw new AppError('Family agency filter is not part of the selected parent scope', 400)
+  }
+
+  const visibleAgencyIds = familyAgencyId ? [familyAgencyId] : scopeAgencyIds
+  const visibleAgency =
+    familyAgencyId === agency.id
+      ? {
+          id: agency.id,
+          name: agency.name,
+          code: agency.code,
+          city: agency.city,
+          country: agency.country,
+          agencyType: agency.agencyType,
+        }
+      : agency.branches.find((branch) => branch.id === familyAgencyId)
 
   return {
     agency,
     includeBranches,
     scopeAgencyIds,
+    visibleAgencyIds,
+    visibleAgency,
   }
 }
 
@@ -394,6 +429,7 @@ export async function getAgencyReport(authUser: AuthenticatedUser, query: Agency
     accessibleAgencyIds,
     query.agencyId,
     query.includeBranches,
+    query.familyAgencyId,
   )
   const { dateFrom, dateTo } = toDayRange(query.dateFrom, query.dateTo)
 
@@ -401,7 +437,7 @@ export async function getAgencyReport(authUser: AuthenticatedUser, query: Agency
     prisma.group.findMany({
       where: {
         agencyId: {
-          in: scopedAgency.scopeAgencyIds,
+          in: scopedAgency.visibleAgencyIds,
         },
         ...(query.groupNumber
           ? {
@@ -431,7 +467,7 @@ export async function getAgencyReport(authUser: AuthenticatedUser, query: Agency
         OR: [
           {
             agencyId: {
-              in: scopedAgency.scopeAgencyIds,
+              in: scopedAgency.visibleAgencyIds,
             },
           },
           {
@@ -439,7 +475,7 @@ export async function getAgencyReport(authUser: AuthenticatedUser, query: Agency
               some: {
                 group: {
                   agencyId: {
-                    in: scopedAgency.scopeAgencyIds,
+                    in: scopedAgency.visibleAgencyIds,
                   },
                   ...(query.groupNumber
                     ? {
@@ -516,6 +552,8 @@ export async function getAgencyReport(authUser: AuthenticatedUser, query: Agency
       paymentStatus: query.paymentStatus,
       includeBranches: scopedAgency.includeBranches,
       scopeAgencyIds: scopedAgency.scopeAgencyIds,
+      visibleAgencyIds: scopedAgency.visibleAgencyIds,
+      visibleAgency: scopedAgency.visibleAgency,
       branches: scopedAgency.agency.branches,
     },
   })

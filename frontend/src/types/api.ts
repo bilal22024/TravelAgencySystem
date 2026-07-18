@@ -441,6 +441,8 @@ export type AgencyReportBusinessSummary = {
   pricePerPax: number
   totalAmount: number
   totalPaymentsReceived: number
+  parentOwnedPayments: number
+  branchOwnedPayments: number
   parentPaymentsAllocatedToAgency: number
   totalAllocatedToGroups: number
   outstandingBalance: number
@@ -500,6 +502,7 @@ export type AgencyReport = {
     groupNumber: string | null
     paymentStatus: PaymentStatus | null
     includeBranches: boolean
+    familyAgencyId: string | null
   }
   agency: {
     id: string
@@ -507,14 +510,36 @@ export type AgencyReport = {
     country: string
     city: string
     agentNumber: string
+    agencyType: AgencyType
+    hierarchyType: 'PARENT' | 'BRANCH' | 'STANDALONE'
     reportScope: 'SINGLE' | 'CONSOLIDATED'
+    scopeLabel: string
     scopeAgencyIds: string[]
+    visibleAgencyIds: string[]
+    visibleAgencyFilter: {
+      id: string
+      agencyName: string
+      agentNumber: string
+      city: string
+      country: string
+      agencyType: AgencyType
+      hierarchyType: 'PARENT' | 'BRANCH' | 'STANDALONE'
+    } | null
+    parentAgency: {
+      id: string
+      agencyName: string
+      agentNumber: string
+      city: string
+      country: string
+      agencyType: AgencyType
+    } | null
     branches: Array<{
       id: string
       agencyName: string
       agentNumber: string
       city: string
       country: string
+      agencyType: AgencyType
     }>
   }
   businessSummary: AgencyReportBusinessSummary
@@ -523,6 +548,8 @@ export type AgencyReport = {
   calculations: {
     totalGroupAmount: number
     directPaymentsByAgency: number
+    parentOwnedPayments: number
+    branchOwnedPayments: number
     parentPaymentsAllocatedToAgency: number
     totalAllocatedToGroups: number
     outstandingBalance: number
