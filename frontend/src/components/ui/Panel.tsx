@@ -12,17 +12,17 @@ export function Panel({ children, title, description, action, className }: Panel
   return (
     <section
       className={cn(
-        'rounded-[28px] border border-white/10 bg-white/[0.045] p-6 shadow-panel backdrop-blur',
+        'rounded-[24px] border border-white/10 bg-white/[0.045] p-4 shadow-panel backdrop-blur sm:p-5',
         className,
       )}
     >
       {(title || description || action) && (
-        <header className="mb-5 flex flex-col gap-3 border-b border-white/8 pb-5 md:flex-row md:items-end md:justify-between">
-          <div>
-            {title ? <h2 className="font-display text-xl text-white">{title}</h2> : null}
-            {description ? <p className="mt-2 text-sm text-slate-300">{description}</p> : null}
+        <header className="mb-4 flex flex-col gap-3 border-b border-white/8 pb-4 md:flex-row md:items-start md:justify-between">
+          <div className="min-w-0">
+            {title ? <h2 className="text-lg font-semibold text-white">{title}</h2> : null}
+            {description ? <p className="mt-1 text-sm leading-6 text-slate-300">{description}</p> : null}
           </div>
-          {action}
+          {action ? <div className="shrink-0">{action}</div> : null}
         </header>
       )}
       {children}

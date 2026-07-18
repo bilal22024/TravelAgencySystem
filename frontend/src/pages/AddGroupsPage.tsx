@@ -243,13 +243,10 @@ export function AddGroupsPage() {
     <div className="space-y-6">
       <PageHeader
         eyebrow="Add Groups"
-        title="Create new groups in one focused data-entry workspace"
-        description="This page is dedicated to adding new groups only, keeping batch entry clean and separate from list management."
+        title="Add Groups"
+        description="Use a focused data-entry workspace for batch group creation without mixing it with list management."
         action={
-          <Link
-            className="inline-flex items-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-semibold text-slate-100 transition hover:bg-white/10"
-            to="/groups"
-          >
+          <Link className="app-button-secondary" to="/groups">
             Go to Group List
           </Link>
         }
@@ -260,7 +257,7 @@ export function AddGroupsPage() {
         description="Choose a Country, City, and Agency, then add multiple groups in one save. Existing groups are intentionally hidden from this page."
         action={
           <button
-            className="inline-flex items-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-4 py-2 text-sm font-semibold text-slate-100 transition hover:bg-white/10"
+            className="app-button-secondary h-10"
             type="button"
             onClick={() => {
               setEntryRows((current) => [...current, createEmptyEntryRow()])

@@ -81,8 +81,8 @@ export function AgenciesPage() {
     <div className="space-y-6">
       <PageHeader
         eyebrow="Agency directory"
-        title="Manage parent agencies, branches, and finance-ready agency profiles"
-        description="Phase 1 introduces hierarchy-aware agency management, richer profile data, better filters, and a dedicated details workflow."
+        title="Agencies"
+        description="Manage parent agencies, branches, and finance-ready profiles with cleaner search, filters, and selection states."
       />
 
       <div className="grid gap-6 xl:grid-cols-[1.35fr,0.9fr]">
@@ -92,7 +92,7 @@ export function AgenciesPage() {
           action={
             canManageAgencies ? (
               <button
-                className="rounded-2xl border border-white/10 bg-white/5 px-4 py-2 text-sm font-semibold text-slate-100 transition hover:bg-white/10"
+                className="app-button-secondary h-10"
                 type="button"
                 onClick={() => setSelectedAgencyId(null)}
               >
@@ -112,7 +112,7 @@ export function AgenciesPage() {
               }}
             />
             <select
-              className="rounded-2xl border border-white/10 bg-[rgba(7,15,27,0.55)] px-4 py-3 text-sm text-white outline-none transition focus:border-cyan-300/50"
+              className="app-field"
               value={agencyType}
               onChange={(event) => {
                 setAgencyType(event.target.value as '' | 'PARENT' | 'BRANCH')
@@ -124,7 +124,7 @@ export function AgenciesPage() {
               <option value="BRANCH">Branch agencies</option>
             </select>
             <input
-              className="rounded-2xl border border-white/10 bg-[rgba(7,15,27,0.55)] px-4 py-3 text-sm text-white outline-none transition focus:border-cyan-300/50"
+              className="app-field"
               placeholder="Category"
               value={category}
               onChange={(event) => {
@@ -133,7 +133,7 @@ export function AgenciesPage() {
               }}
             />
             <select
-              className="rounded-2xl border border-white/10 bg-[rgba(7,15,27,0.55)] px-4 py-3 text-sm text-white outline-none transition focus:border-cyan-300/50"
+              className="app-field"
               value={isActive}
               onChange={(event) => {
                 setIsActive(event.target.value as 'true' | 'false' | '')
@@ -146,7 +146,7 @@ export function AgenciesPage() {
             </select>
             <div className="grid grid-cols-2 gap-3">
               <select
-                className="rounded-2xl border border-white/10 bg-[rgba(7,15,27,0.55)] px-4 py-3 text-sm text-white outline-none transition focus:border-cyan-300/50"
+                className="app-field"
                 value={sortBy}
                 onChange={(event) => {
                   setSortBy(event.target.value as typeof sortBy)
@@ -163,7 +163,7 @@ export function AgenciesPage() {
                 <option value="country">Country</option>
               </select>
               <select
-                className="rounded-2xl border border-white/10 bg-[rgba(7,15,27,0.55)] px-4 py-3 text-sm text-white outline-none transition focus:border-cyan-300/50"
+                className="app-field"
                 value={sortOrder}
                 onChange={(event) => {
                   setSortOrder(event.target.value as 'asc' | 'desc')

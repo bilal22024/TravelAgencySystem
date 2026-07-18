@@ -654,8 +654,8 @@ export function PaymentsPage() {
     <div className="space-y-6">
       <PageHeader
         eyebrow="Professional payment management"
-        title="Record direct payments, parent-paid allocations, and advance balances"
-        description="This workflow supports manual allocation, oldest-first auto allocation, parent-to-branch coverage, and credit-balance creation while refreshing reports, ledgers, outstanding balances, dashboard data, and payment history."
+        title="Payments"
+        description="Record direct payments, parent-paid allocations, and advance balances with cleaner scope selection, tables, and feedback states."
       />
 
       <Panel
@@ -668,7 +668,7 @@ export function PaymentsPage() {
               Country
             </span>
             <select
-              className="w-full rounded-2xl border border-white/10 bg-[rgba(7,15,27,0.55)] px-4 py-3 text-sm text-white outline-none transition focus:border-cyan-300/50"
+              className="app-field"
               value={selectedCountry}
               disabled={!isSuperAdmin}
               onChange={(event) => {
@@ -689,7 +689,7 @@ export function PaymentsPage() {
               City
             </span>
             <select
-              className="w-full rounded-2xl border border-white/10 bg-[rgba(7,15,27,0.55)] px-4 py-3 text-sm text-white outline-none transition focus:border-cyan-300/50"
+              className="app-field"
               value={selectedCity}
               disabled={!isSuperAdmin}
               onChange={(event) => {
@@ -710,7 +710,7 @@ export function PaymentsPage() {
               Agency
             </span>
             <select
-              className="w-full rounded-2xl border border-white/10 bg-[rgba(7,15,27,0.55)] px-4 py-3 text-sm text-white outline-none transition focus:border-cyan-300/50"
+              className="app-field"
               value={selectedAgencyId}
               onChange={(event) => {
                 setSelectedAgencyId(event.target.value)
@@ -776,7 +776,7 @@ export function PaymentsPage() {
             groups.length > 0 ? (
               <div className="flex flex-wrap gap-2">
                 <button
-                  className="rounded-2xl border border-white/10 bg-white/5 px-4 py-2 text-sm font-semibold text-slate-100 transition hover:bg-white/10"
+                  className="app-button-secondary h-10"
                   type="button"
                   onClick={() => {
                     setSelectedGroupIds(groups.slice(0, 100).map((group) => group.groupId))
@@ -785,7 +785,7 @@ export function PaymentsPage() {
                   Select all visible
                 </button>
                 <button
-                  className="rounded-2xl border border-white/10 bg-white/5 px-4 py-2 text-sm font-semibold text-slate-100 transition hover:bg-white/10"
+                  className="app-button-secondary h-10"
                   type="button"
                   onClick={() => setSelectedGroupIds([])}
                 >

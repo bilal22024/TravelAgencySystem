@@ -1,4 +1,4 @@
-import { memo } from 'react'
+import { forwardRef, memo } from 'react'
 import { cn } from '@/lib/utils'
 
 type SearchInputProps = {
@@ -8,11 +8,15 @@ type SearchInputProps = {
   className?: string
 }
 
-function SearchInputComponent({ placeholder, value, onChange, className }: SearchInputProps) {
+const SearchInputComponent = forwardRef<HTMLInputElement, SearchInputProps>(function SearchInputComponent(
+  { placeholder, value, onChange, className },
+  ref,
+) {
   return (
     <input
+      ref={ref}
       className={cn(
-        'w-full rounded-2xl border border-white/10 bg-[rgba(7,15,27,0.55)] px-4 py-3 text-sm text-white outline-none transition focus:border-cyan-300/50',
+        'h-11 w-full rounded-2xl border border-white/10 bg-[rgba(7,15,27,0.55)] px-4 text-sm text-white outline-none transition placeholder:text-slate-500 focus:border-cyan-300/50 focus:ring-2 focus:ring-cyan-300/20',
         className,
       )}
       type="search"
@@ -24,6 +28,6 @@ function SearchInputComponent({ placeholder, value, onChange, className }: Searc
       onChange={(event) => onChange(event.target.value)}
     />
   )
-}
+})
 
 export const SearchInput = memo(SearchInputComponent)

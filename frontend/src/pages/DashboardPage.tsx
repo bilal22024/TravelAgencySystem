@@ -11,6 +11,7 @@ import {
   Wallet,
 } from 'lucide-react'
 import { Link } from 'react-router-dom'
+import { PageHeader } from '@/components/layout/PageHeader'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { LoadingBlock } from '@/components/ui/LoadingBlock'
 import { Panel } from '@/components/ui/Panel'
@@ -357,12 +358,18 @@ export function DashboardPage() {
 
   return (
     <div className="space-y-5">
-      <div className="flex items-center justify-between">
-        <h1 className="font-display text-2xl text-white sm:text-3xl">Finance Dashboard</h1>
-        <span className="rounded-full border border-emerald-400/25 bg-emerald-400/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-emerald-100">
-          Live Data
-        </span>
-      </div>
+      <PageHeader
+        eyebrow="Finance Dashboard"
+        title="Operational finance overview"
+        description="Track agencies, groups, collections, and outstanding balances from one compact dashboard using the existing live reporting APIs."
+        action={
+          <div className="flex justify-start lg:justify-end">
+            <span className="inline-flex items-center rounded-full border border-emerald-400/25 bg-emerald-400/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-emerald-100">
+              Live Data
+            </span>
+          </div>
+        }
+      />
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
         {summaryCards.map((card) => (
@@ -458,34 +465,46 @@ export function DashboardPage() {
               icon={ShieldCheck}
               title="No country summary available"
               description="Country totals will appear here once agencies, groups, and payments are available."
+              compact
             />
           ) : (
-            <div className="space-y-2">
-              <div className="grid grid-cols-[1.2fr,0.7fr,0.7fr,0.9fr,0.9fr] gap-3 px-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400">
+            <div className="space-y-3">
+              <div className="hidden px-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400 md:grid md:grid-cols-[1.2fr,0.7fr,0.7fr,0.9fr,0.9fr] md:gap-3">
                 <span>Country</span>
                 <span className="text-right">Groups</span>
                 <span className="text-right">Pax</span>
                 <span className="text-right">Received</span>
                 <span className="text-right">Outstanding</span>
               </div>
-              {countrySummary.slice(0, 8).map((country) => (
-                <div
-                  key={country.country}
-                  className="grid grid-cols-[1.2fr,0.7fr,0.7fr,0.9fr,0.9fr] gap-3 rounded-[18px] border border-white/10 bg-white/[0.04] px-4 py-3 text-sm"
-                >
-                  <span className="truncate font-semibold text-white">{country.country}</span>
-                  <span className="text-right text-slate-200">
-                    {formatNumber(country.totalGroups)}
-                  </span>
-                  <span className="text-right text-slate-200">{formatNumber(country.totalPax)}</span>
-                  <span className="text-right text-slate-200">
-                    {formatCurrency(country.totalAmountPaid)}
-                  </span>
-                  <span className="text-right text-rose-100">
-                    {formatCurrency(country.outstandingAmount)}
-                  </span>
+              <div className="app-table-wrap hidden md:block">
+                <div className="space-y-2 p-2">
+                  {countrySummary.slice(0, 8).map((country) => (
+                    <div
+                      key={country.country}
+                      className="grid grid-cols-[1.2fr,0.7fr,0.7fr,0.9fr,0.9fr] gap-3 rounded-[18px] bg-white/[0.04] px-4 py-3 text-sm"
+                    >
+                      <span className="truncate font-semibold text-white">{country.country}</span>
+                      <span className="text-right text-slate-200">{formatNumber(country.totalGroups)}</span>
+                      <span className="text-right text-slate-200">{formatNumber(country.totalPax)}</span>
+                      <span className="text-right text-slate-200">{formatCurrency(country.totalAmountPaid)}</span>
+                      <span className="text-right text-rose-100">{formatCurrency(country.outstandingAmount)}</span>
+                    </div>
+                  ))}
                 </div>
-              ))}
+              </div>
+              <div className="grid gap-3 md:hidden">
+                {countrySummary.slice(0, 8).map((country) => (
+                  <div key={country.country} className="rounded-[18px] border border-white/10 bg-white/[0.04] px-4 py-3 text-sm">
+                    <p className="font-semibold text-white">{country.country}</p>
+                    <div className="mt-3 grid grid-cols-2 gap-3 text-slate-200">
+                      <span>Groups: {formatNumber(country.totalGroups)}</span>
+                      <span>Pax: {formatNumber(country.totalPax)}</span>
+                      <span>Received: {formatCurrency(country.totalAmountPaid)}</span>
+                      <span className="text-rose-100">Outstanding: {formatCurrency(country.outstandingAmount)}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
         </Panel>

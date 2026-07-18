@@ -211,13 +211,10 @@ export function GroupsPage() {
     <div className="space-y-6">
       <PageHeader
         eyebrow="Group List"
-        title="Manage existing groups with clean search, filters, summaries, and actions"
-        description="This page is now dedicated to managing existing groups only, keeping search, review, edit, archive, and safe deletion separate from group creation."
+        title="Groups"
+        description="Manage existing groups with clearer filters, compact summaries, and dedicated list actions separate from group entry."
         action={
-          <Link
-            className="inline-flex items-center gap-2 rounded-2xl bg-cyan-300 px-4 py-3 text-sm font-semibold text-slate-950 transition hover:bg-cyan-200"
-            to="/groups/add"
-          >
+          <Link className="app-button-primary" to="/groups/add">
             New Group
           </Link>
         }
@@ -235,10 +232,7 @@ export function GroupsPage() {
         </div>
       ) : null}
 
-      <Panel
-        title="Advanced Filters"
-        description="Search instantly while typing and combine location, lifecycle, financial, and date filters without loading unnecessary records."
-      >
+      <Panel title="Filters" description="Search instantly while typing and combine location, lifecycle, financial, and date filters without loading unnecessary records.">
         <div className="grid gap-4 xl:grid-cols-12">
           <SearchInput
             className="xl:col-span-4"
@@ -251,7 +245,7 @@ export function GroupsPage() {
           />
 
           <select
-            className="rounded-2xl border border-white/10 bg-[rgba(7,15,27,0.55)] px-4 py-3 text-sm text-white outline-none transition focus:border-cyan-300/50 xl:col-span-2"
+            className="app-field xl:col-span-2"
             value={selectedCountry}
             onChange={(event) => {
               setSelectedCountry(event.target.value)
@@ -269,7 +263,7 @@ export function GroupsPage() {
           </select>
 
           <select
-            className="rounded-2xl border border-white/10 bg-[rgba(7,15,27,0.55)] px-4 py-3 text-sm text-white outline-none transition focus:border-cyan-300/50 disabled:cursor-not-allowed disabled:opacity-60 xl:col-span-2"
+            className="app-field disabled:cursor-not-allowed disabled:opacity-60 xl:col-span-2"
             value={selectedCity}
             disabled={!selectedCountry}
             onChange={(event) => {
@@ -287,7 +281,7 @@ export function GroupsPage() {
           </select>
 
           <select
-            className="rounded-2xl border border-white/10 bg-[rgba(7,15,27,0.55)] px-4 py-3 text-sm text-white outline-none transition focus:border-cyan-300/50 xl:col-span-2"
+            className="app-field xl:col-span-2"
             value={selectedAgencyId}
             onChange={(event) => {
               setSelectedAgencyId(event.target.value)
@@ -303,7 +297,7 @@ export function GroupsPage() {
           </select>
 
           <select
-            className="rounded-2xl border border-white/10 bg-[rgba(7,15,27,0.55)] px-4 py-3 text-sm text-white outline-none transition focus:border-cyan-300/50 xl:col-span-2"
+            className="app-field xl:col-span-2"
             value={groupStatus}
             onChange={(event) => {
               setGroupStatus(event.target.value as typeof groupStatus)
@@ -319,7 +313,7 @@ export function GroupsPage() {
           </select>
 
           <select
-            className="rounded-2xl border border-white/10 bg-[rgba(7,15,27,0.55)] px-4 py-3 text-sm text-white outline-none transition focus:border-cyan-300/50 xl:col-span-2"
+            className="app-field xl:col-span-2"
             value={paymentStatus}
             onChange={(event) => {
               setPaymentStatus(event.target.value as typeof paymentStatus)

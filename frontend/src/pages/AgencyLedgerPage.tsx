@@ -136,20 +136,16 @@ export function AgencyLedgerPage() {
             ? 'Consolidated parent ledger'
             : 'Agency ledger'
         }
-        title={
-          ledger.agency.reportScope === 'CONSOLIDATED'
-            ? 'Track parent and branch balances in one combined ledger'
-            : 'Track every agency transaction in chronological order'
-        }
+        title={ledger.agency.agencyName}
         description={
           ledger.agency.reportScope === 'CONSOLIDATED'
-            ? 'This consolidated ledger combines parent and branch group charges, payments, and net external allocations while excluding internal transfers inside the same parent scope.'
-            : 'This ledger now combines opening balance, group charges, direct payments, incoming allocations, and advance-balance usage into one finance-friendly running balance.'
+            ? 'Parent + Branches - Consolidated. This ledger combines external group charges, payments, and balances while excluding internal family transfers.'
+            : 'Single-agency ledger with opening balance, group charges, direct payments, incoming allocations, and advance-balance usage.'
         }
         action={
-          <div className="grid gap-3 sm:grid-cols-2">
+          <div className="flex flex-wrap items-center gap-2 lg:justify-end">
             <button
-              className="inline-flex items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-semibold text-slate-100 transition hover:bg-white/10"
+              className="app-button-secondary"
               type="button"
               onClick={() => window.print()}
             >
@@ -157,7 +153,7 @@ export function AgencyLedgerPage() {
               Print ledger
             </button>
             <button
-              className="inline-flex items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-semibold text-slate-100 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
+              className="app-button-secondary"
               type="button"
               disabled={isExportingPdf}
               onClick={async () => {
@@ -190,7 +186,7 @@ export function AgencyLedgerPage() {
                 Travel agency
               </span>
               <select
-                className="w-full rounded-2xl border border-white/10 bg-[rgba(7,15,27,0.55)] px-4 py-3 text-sm text-white outline-none transition focus:border-cyan-300/50"
+                className="app-field"
                 value={selectedAgencyId}
                 onChange={(event) => setSelectedAgencyId(event.target.value)}
               >
@@ -217,7 +213,7 @@ export function AgencyLedgerPage() {
               Ledger scope
             </span>
             <select
-              className="w-full rounded-2xl border border-white/10 bg-[rgba(7,15,27,0.55)] px-4 py-3 text-sm text-white outline-none transition focus:border-cyan-300/50"
+              className="app-field"
               value={includeBranches && canConsolidate ? 'consolidated' : 'single'}
               onChange={(event) => setIncludeBranches(event.target.value === 'consolidated')}
               disabled={!canConsolidate}
@@ -234,7 +230,7 @@ export function AgencyLedgerPage() {
               Date from
             </span>
             <input
-              className="w-full rounded-2xl border border-white/10 bg-[rgba(7,15,27,0.55)] px-4 py-3 text-sm text-white outline-none transition focus:border-cyan-300/50"
+              className="app-field"
               type="date"
               value={dateFrom}
               onChange={(event) => setDateFrom(event.target.value)}
@@ -246,7 +242,7 @@ export function AgencyLedgerPage() {
               Date to
             </span>
             <input
-              className="w-full rounded-2xl border border-white/10 bg-[rgba(7,15,27,0.55)] px-4 py-3 text-sm text-white outline-none transition focus:border-cyan-300/50"
+              className="app-field"
               type="date"
               value={dateTo}
               onChange={(event) => setDateTo(event.target.value)}

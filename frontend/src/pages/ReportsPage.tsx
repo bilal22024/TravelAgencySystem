@@ -64,10 +64,10 @@ export function ReportsPage() {
     <div className="space-y-6">
       <PageHeader
         eyebrow="Reports and exports"
-        title="Review consolidated finance summaries with export-ready reporting"
-        description="Phase 3 extends reporting so parent agencies can review consolidated revenue, outstanding balances, advance balances, and net exposure from the same backend aggregation used by exports."
+        title="Finance Reports"
+        description="Review revenue, outstanding balances, advances, and net exposure from the same backend aggregations used by exports."
         action={
-          <div className="grid gap-3 sm:grid-cols-3">
+          <div className="flex flex-wrap items-center gap-2 lg:justify-end">
             {[
               { format: 'csv' as const, label: 'CSV Export', icon: Download },
               { format: 'excel' as const, label: 'Excel Export', icon: FileSpreadsheet },
@@ -75,7 +75,7 @@ export function ReportsPage() {
             ].map((item) => (
               <button
                 key={item.format}
-                className="inline-flex items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-semibold text-slate-100 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
+                className="app-button-secondary"
                 type="button"
                 disabled={isDownloading !== ''}
                 onClick={async () => {
@@ -117,7 +117,7 @@ export function ReportsPage() {
               Report year
             </span>
             <input
-              className="w-full rounded-2xl border border-white/10 bg-[rgba(7,15,27,0.55)] px-4 py-3 text-sm text-white outline-none transition focus:border-cyan-300/50"
+              className="app-field"
               min={2000}
               max={2100}
               type="number"
@@ -131,7 +131,7 @@ export function ReportsPage() {
               Report month
             </span>
             <select
-              className="w-full rounded-2xl border border-white/10 bg-[rgba(7,15,27,0.55)] px-4 py-3 text-sm text-white outline-none transition focus:border-cyan-300/50"
+              className="app-field"
               value={month}
               onChange={(event) =>
                 setMonth(event.target.value ? Number(event.target.value) : '')

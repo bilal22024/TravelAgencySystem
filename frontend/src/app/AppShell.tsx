@@ -1,6 +1,6 @@
 import { type ReactNode, useMemo, useState } from 'react'
 import { Outlet, useLocation } from 'react-router-dom'
-import { Bell, Search } from 'lucide-react'
+import { Menu, Search } from 'lucide-react'
 import { SidebarNav } from '@/components/layout/SidebarNav'
 import { routeMetaByPath } from '@/lib/route-meta'
 import { useAuthStore } from '@/features/auth/store/useAuthStore'
@@ -11,6 +11,7 @@ type AppShellProps = {
 
 export function AppShell({ children }: AppShellProps) {
   const [collapsed, setCollapsed] = useState(false)
+  const [mobileNavOpen, setMobileNavOpen] = useState(false)
   const location = useLocation()
   const user = useAuthStore((state) => state.user)
 
@@ -38,52 +39,55 @@ export function AppShell({ children }: AppShellProps) {
   }, [location.pathname])
 
   return (
-    <div className="min-h-screen bg-[var(--app-bg)] text-slate-100">
-      <div className="mx-auto grid min-h-screen max-w-[1600px] gap-6 px-4 py-4 xl:grid-cols-[auto,1fr] xl:px-6 xl:py-6">
-        <SidebarNav collapsed={collapsed} onToggle={() => setCollapsed((value) => !value)} />
+    <div className="min-h-screen overflow-x-clip bg-[var(--app-bg)] text-slate-100">
+      <div className="mx-auto grid min-h-screen max-w-[1480px] gap-4 px-3 py-3 sm:px-4 lg:gap-5 lg:px-5 lg:py-5 xl:grid-cols-[auto,minmax(0,1fr)] xl:gap-6 xl:px-6 xl:py-6">
+        <SidebarNav
+          collapsed={collapsed}
+          mobileOpen={mobileNavOpen}
+          onCloseMobile={() => setMobileNavOpen(false)}
+          onToggle={() => setCollapsed((value) => !value)}
+        />
 
-        <div className="space-y-6">
-          <header className="rounded-[32px] border border-white/10 bg-white/[0.05] px-5 py-4 shadow-panel backdrop-blur">
-            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-              <div>
-                {routeMeta.subtitle ? (
-                  <>
-                    <p className="text-xs font-semibold uppercase tracking-[0.3em] text-cyan-200">
-                      {routeMeta.title}
-                    </p>
-                    <h2 className="mt-2 font-display text-2xl text-white">{routeMeta.subtitle}</h2>
-                  </>
-                ) : (
-                  <h1 className="font-display text-2xl text-white">{routeMeta.title}</h1>
-                )}
+        <div className="min-w-0 space-y-5">
+          <header className="sticky top-3 z-30 rounded-[24px] border border-white/10 bg-[rgba(7,15,27,0.88)] px-4 py-3 shadow-panel backdrop-blur sm:px-5">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex min-w-0 items-center gap-3">
+                <button
+                  className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-white/10 bg-white/5 text-slate-200 transition hover:bg-white/10 xl:hidden"
+                  type="button"
+                  onClick={() => setMobileNavOpen(true)}
+                  aria-label="Open navigation"
+                >
+                  <Menu className="h-4 w-4" />
+                </button>
+                <div className="min-w-0">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-cyan-200">
+                    Travel Agency ERP
+                  </p>
+                  <p className="truncate text-sm font-semibold text-white">{routeMeta.title}</p>
+                </div>
               </div>
 
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-                <div className="flex items-center gap-3 rounded-2xl border border-white/10 bg-[rgba(7,15,27,0.55)] px-4 py-3 text-slate-300">
-                  <Search className="h-4 w-4 text-slate-500" />
-                  <span className="text-sm text-slate-400">Search agencies, groups, or payments</span>
+              <div className="flex flex-1 items-center justify-end gap-3">
+                <div className="hidden min-w-[260px] max-w-[420px] flex-1 items-center gap-3 rounded-2xl border border-white/10 bg-[rgba(7,15,27,0.55)] px-4 py-3 text-slate-300 md:flex">
+                  <Search className="h-4 w-4 shrink-0 text-slate-500" />
+                  <span className="truncate text-sm text-slate-400">
+                    Search agencies, groups, or payments
+                  </span>
                 </div>
-                <div className="flex items-center gap-3">
-                  <button
-                    className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-white/10 bg-white/5 text-slate-200 transition hover:bg-white/10"
-                    type="button"
-                  >
-                    <Bell className="h-4 w-4" />
-                  </button>
-                  <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
-                    <p className="text-sm font-semibold text-white">
-                      {user ? `${user.firstName} ${user.lastName}` : 'Travel operator'}
-                    </p>
-                    <p className="text-xs uppercase tracking-[0.2em] text-slate-400">
-                      {user?.email ?? 'Connected to live API'}
-                    </p>
-                  </div>
+                <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
+                  <p className="truncate text-sm font-semibold text-white">
+                    {user ? `${user.firstName} ${user.lastName}` : 'Travel operator'}
+                  </p>
+                  <p className="truncate text-xs uppercase tracking-[0.18em] text-slate-400">
+                    {user?.email ?? 'Connected to live API'}
+                  </p>
                 </div>
               </div>
             </div>
           </header>
 
-          <main>{children ?? <Outlet />}</main>
+          <main className="mx-auto w-full max-w-[1180px] min-w-0">{children ?? <Outlet />}</main>
         </div>
       </div>
     </div>

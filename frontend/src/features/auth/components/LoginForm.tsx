@@ -41,7 +41,7 @@ export function LoginForm({ onSuccess }: LoginFormProps) {
         <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.28em] text-slate-400">
           Email
         </span>
-        <span className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 transition focus-within:border-cyan-300/50 focus-within:bg-white/10">
+        <span className="flex h-11 items-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 transition focus-within:border-cyan-300/50 focus-within:bg-white/10 focus-within:ring-2 focus-within:ring-cyan-300/20">
           <Mail className="h-4 w-4 text-cyan-200" />
           <input
             className="w-full bg-transparent text-sm text-white outline-none placeholder:text-slate-500"
@@ -59,7 +59,7 @@ export function LoginForm({ onSuccess }: LoginFormProps) {
         <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.28em] text-slate-400">
           Password
         </span>
-        <span className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 transition focus-within:border-cyan-300/50 focus-within:bg-white/10">
+        <span className="flex h-11 items-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 transition focus-within:border-cyan-300/50 focus-within:bg-white/10 focus-within:ring-2 focus-within:ring-cyan-300/20">
           <LockKeyhole className="h-4 w-4 text-cyan-200" />
           <input
             className="w-full bg-transparent text-sm text-white outline-none placeholder:text-slate-500"
@@ -80,7 +80,7 @@ export function LoginForm({ onSuccess }: LoginFormProps) {
       )}
 
       <button
-        className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-cyan-300 px-4 py-3 text-sm font-semibold text-slate-950 transition hover:bg-cyan-200 disabled:cursor-not-allowed disabled:bg-slate-600 disabled:text-slate-300"
+        className="app-button-primary w-full"
         type="submit"
         disabled={loginMutation.isPending}
       >

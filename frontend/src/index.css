@@ -24,6 +24,7 @@ body {
   margin: 0;
   min-width: 320px;
   min-height: 100vh;
+  overflow-x: clip;
   background:
     radial-gradient(circle at top left, rgba(34, 211, 238, 0.16), transparent 24%),
     radial-gradient(circle at bottom right, rgba(52, 211, 153, 0.12), transparent 28%),
@@ -39,6 +40,50 @@ input,
 select,
 textarea {
   font: inherit;
+}
+
+button,
+[role='button'] {
+  -webkit-tap-highlight-color: transparent;
+}
+
+:focus-visible {
+  outline: 2px solid rgba(103, 232, 249, 0.8);
+  outline-offset: 2px;
+}
+
+@layer components {
+  .app-field {
+    @apply h-11 w-full rounded-2xl border border-white/10 bg-[rgba(7,15,27,0.55)] px-4 text-sm text-white outline-none transition placeholder:text-slate-500 focus:border-cyan-300/50 focus:ring-2 focus:ring-cyan-300/20;
+  }
+
+  .app-select {
+    @apply app-field appearance-none pr-10;
+  }
+
+  .app-button-secondary {
+    @apply inline-flex h-11 items-center justify-center gap-2 whitespace-nowrap rounded-2xl border border-white/10 bg-white/5 px-4 text-sm font-semibold text-slate-100 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50;
+  }
+
+  .app-button-primary {
+    @apply inline-flex h-11 items-center justify-center gap-2 whitespace-nowrap rounded-2xl bg-cyan-300 px-4 text-sm font-semibold text-slate-950 transition hover:bg-cyan-200 disabled:cursor-not-allowed disabled:bg-slate-600 disabled:text-slate-300;
+  }
+
+  .app-button-ghost {
+    @apply inline-flex h-11 items-center justify-center gap-2 whitespace-nowrap rounded-2xl px-4 text-sm font-semibold text-slate-200 transition hover:bg-white/5 hover:text-white disabled:cursor-not-allowed disabled:opacity-50;
+  }
+
+  .app-card-muted {
+    @apply rounded-[22px] border border-white/10 bg-[rgba(7,15,27,0.4)];
+  }
+
+  .app-kpi-card {
+    @apply rounded-[24px] border border-white/10 bg-white/[0.05] p-5 shadow-panel backdrop-blur;
+  }
+
+  .app-table-wrap {
+    @apply overflow-x-auto rounded-[22px] border border-white/10 bg-[rgba(7,15,27,0.3)];
+  }
 }
 
 .font-display {

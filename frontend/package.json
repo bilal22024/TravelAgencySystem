@@ -7,7 +7,10 @@
   
 "scripts": {
   "dev": "vite",
+  "check": "tsc --noEmit",
   "build": "tsc --noEmit && vite build",
+  "lint": "eslint .",
+  "test": "vitest",
   "preview": "vite preview --host 0.0.0.0 --port $PORT",
   "start": "vite preview --host 0.0.0.0 --port $PORT"
 },

@@ -87,12 +87,12 @@ export function OutstandingBalanceReportPage() {
     <div className="space-y-6">
       <PageHeader
         eyebrow="Outstanding balance report"
-        title="Identify agencies with unpaid and partially paid balances quickly"
-        description="This report now separates outstanding balances from advance credits so finance can see both the gross due amount and the net position for each agency."
+        title="Outstanding Balances"
+        description="Review unpaid and partially paid balances in one finance-friendly report with aligned search, filters, and exports."
         action={
-          <div className="grid gap-3 sm:grid-cols-4">
+          <div className="flex flex-wrap items-center gap-2 lg:justify-end">
             <button
-              className="inline-flex items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-semibold text-slate-100 transition hover:bg-white/10"
+              className="app-button-secondary"
               type="button"
               onClick={() => window.print()}
             >
@@ -106,7 +106,7 @@ export function OutstandingBalanceReportPage() {
             ].map((item) => (
               <button
                 key={item.format}
-                className="inline-flex items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-semibold text-slate-100 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
+                className="app-button-secondary"
                 type="button"
                 disabled={isDownloading !== ''}
                 onClick={async () => {
@@ -147,7 +147,7 @@ export function OutstandingBalanceReportPage() {
               Payment status
             </span>
             <select
-              className="w-full rounded-2xl border border-white/10 bg-[rgba(7,15,27,0.55)] px-4 py-3 text-sm text-white outline-none transition focus:border-cyan-300/50"
+              className="app-field"
               value={paymentStatus}
               onChange={(event) =>
                 setPaymentStatus(event.target.value as '' | OutstandingBalancePaymentStatus)
@@ -166,7 +166,7 @@ export function OutstandingBalanceReportPage() {
               Date from
             </span>
             <input
-              className="w-full rounded-2xl border border-white/10 bg-[rgba(7,15,27,0.55)] px-4 py-3 text-sm text-white outline-none transition focus:border-cyan-300/50"
+              className="app-field"
               type="date"
               value={dateFrom}
               onChange={(event) => setDateFrom(event.target.value)}
@@ -178,7 +178,7 @@ export function OutstandingBalanceReportPage() {
               Date to
             </span>
             <input
-              className="w-full rounded-2xl border border-white/10 bg-[rgba(7,15,27,0.55)] px-4 py-3 text-sm text-white outline-none transition focus:border-cyan-300/50"
+              className="app-field"
               type="date"
               value={dateTo}
               onChange={(event) => setDateTo(event.target.value)}
@@ -190,7 +190,7 @@ export function OutstandingBalanceReportPage() {
               Sort by
             </span>
             <select
-              className="w-full rounded-2xl border border-white/10 bg-[rgba(7,15,27,0.55)] px-4 py-3 text-sm text-white outline-none transition focus:border-cyan-300/50"
+              className="app-field"
               value={sortBy}
               onChange={(event) =>
                 setSortBy(
@@ -209,7 +209,7 @@ export function OutstandingBalanceReportPage() {
               Sort order
             </span>
             <select
-              className="w-full rounded-2xl border border-white/10 bg-[rgba(7,15,27,0.55)] px-4 py-3 text-sm text-white outline-none transition focus:border-cyan-300/50"
+              className="app-field"
               value={sortOrder}
               onChange={(event) => setSortOrder(event.target.value as 'asc' | 'desc')}
             >
