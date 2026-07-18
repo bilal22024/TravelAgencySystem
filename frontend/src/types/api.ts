@@ -375,6 +375,8 @@ export type PaymentEntryResult = {
 export type ReportTotals = {
   totalRevenue: number
   outstandingBalance: number
+  advanceBalance: number
+  netBalance: number
   allocatedRevenue: number
   allocationCoverageRate: number
   paymentCount: number
@@ -390,6 +392,8 @@ export type CountryRevenuePoint = {
   country: string
   revenue: number
   outstandingBalance: number
+  advanceBalance: number
+  netBalance: number
 }
 
 export type AgencyRevenuePoint = {
@@ -399,6 +403,8 @@ export type AgencyRevenuePoint = {
   country: string
   revenue: number
   outstandingBalance: number
+  advanceBalance: number
+  netBalance: number
   paymentCount: number
 }
 
@@ -443,6 +449,9 @@ export type AgencyReportBusinessSummary = {
 export type AgencyReportGroupDetail = {
   groupId: string
   groupNumber: string
+  agencyId: string
+  agencyName: string
+  agencyCode: string
   numberOfPax: number
   pricePerPax: number
   groupAmount: number
@@ -468,6 +477,9 @@ export type AgencyReportPaymentHistoryItem = {
   paymentGroups: Array<{
     groupId: string
     groupNumber: string
+    agencyId: string
+    agencyName: string
+    agencyCode: string
     allocatedAmount: number
     notes: string | null
   }>
@@ -480,6 +492,7 @@ export type AgencyReport = {
     dateTo: string | null
     groupNumber: string | null
     paymentStatus: PaymentStatus | null
+    includeBranches: boolean
   }
   agency: {
     id: string
@@ -487,6 +500,15 @@ export type AgencyReport = {
     country: string
     city: string
     agentNumber: string
+    reportScope: 'SINGLE' | 'CONSOLIDATED'
+    scopeAgencyIds: string[]
+    branches: Array<{
+      id: string
+      agencyName: string
+      agentNumber: string
+      city: string
+      country: string
+    }>
   }
   businessSummary: AgencyReportBusinessSummary
   groupDetails: AgencyReportGroupDetail[]
@@ -515,6 +537,7 @@ export type AgencyLedger = {
     agencyId: string
     dateFrom: string | null
     dateTo: string | null
+    includeBranches: boolean
   }
   agency: {
     id: string
@@ -522,6 +545,15 @@ export type AgencyLedger = {
     agentNumber: string
     city: string
     country: string
+    reportScope: 'SINGLE' | 'CONSOLIDATED'
+    scopeAgencyIds: string[]
+    branches: Array<{
+      id: string
+      agencyName: string
+      agentNumber: string
+      city: string
+      country: string
+    }>
   }
   summary: {
     openingBalance: number

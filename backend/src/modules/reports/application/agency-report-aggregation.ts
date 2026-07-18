@@ -17,6 +17,11 @@ type GroupLike = {
   code: string
   travelerCount: number
   totalAmount: number | string | { toString(): string } | null
+  agency: {
+    id: string
+    name: string
+    code: string
+  }
 }
 
 type PaymentGroupLike = {
@@ -25,6 +30,11 @@ type PaymentGroupLike = {
   group: {
     id: string
     code: string
+    agency: {
+      id: string
+      name: string
+      code: string
+    }
   }
 }
 
@@ -57,6 +67,15 @@ type AgencyReportInput = {
     dateTo?: Date
     groupCode?: string
     paymentStatus?: PaymentStatus
+    includeBranches: boolean
+    scopeAgencyIds: string[]
+    branches: Array<{
+      id: string
+      name: string
+      code: string
+      city: string | null
+      country: string | null
+    }>
   }
 }
 
@@ -153,6 +172,9 @@ export function buildAgencyReport({ agency, groups, payments, filters }: AgencyR
         paymentGroups: payment.paymentGroups.map((paymentGroup) => ({
           groupId: paymentGroup.group.id,
           groupNumber: paymentGroup.group.code,
+          agencyId: paymentGroup.group.agency.id,
+          agencyName: paymentGroup.group.agency.name,
+          agencyCode: paymentGroup.group.agency.code,
           allocatedAmount: Number(toAmount(paymentGroup.allocatedAmount).toFixed(2)),
           notes: paymentGroup.notes ?? null,
         })),
@@ -189,6 +211,9 @@ export function buildAgencyReport({ agency, groups, payments, filters }: AgencyR
       return {
         groupId: group.id,
         groupNumber: group.code,
+        agencyId: group.agency.id,
+        agencyName: group.agency.name,
+        agencyCode: group.agency.code,
         numberOfPax: group.travelerCount,
         pricePerPax,
         groupAmount,
@@ -219,6 +244,7 @@ export function buildAgencyReport({ agency, groups, payments, filters }: AgencyR
       dateTo: filters.dateTo?.toISOString() ?? null,
       groupNumber: filters.groupCode ?? null,
       paymentStatus: filters.paymentStatus ?? null,
+      includeBranches: filters.includeBranches,
     },
     agency: {
       id: agency.id,
@@ -226,6 +252,15 @@ export function buildAgencyReport({ agency, groups, payments, filters }: AgencyR
       country: agency.country ?? 'Unspecified',
       city: agency.city ?? 'Unspecified',
       agentNumber: agency.code,
+      reportScope: filters.includeBranches ? 'CONSOLIDATED' : 'SINGLE',
+      scopeAgencyIds: filters.scopeAgencyIds,
+      branches: filters.branches.map((branch) => ({
+        id: branch.id,
+        agencyName: branch.name,
+        agentNumber: branch.code,
+        city: branch.city ?? 'Unspecified',
+        country: branch.country ?? 'Unspecified',
+      })),
     },
     businessSummary: {
       totalGroups: groupDetails.length,

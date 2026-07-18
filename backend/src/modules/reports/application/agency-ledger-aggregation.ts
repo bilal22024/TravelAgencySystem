@@ -12,6 +12,11 @@ type GroupLike = {
   code: string
   totalAmount: number | string | { toString(): string } | null
   createdAt: Date
+  agency: {
+    id: string
+    name: string
+    code: string
+  }
 }
 
 type PaymentGroupLike = {
@@ -55,6 +60,15 @@ type AgencyLedgerInput = {
   filters: {
     dateFrom?: Date
     dateTo?: Date
+    includeBranches: boolean
+    scopeAgencyIds: string[]
+    branches: Array<{
+      id: string
+      name: string
+      code: string
+      city: string | null
+      country: string | null
+    }>
   }
 }
 
@@ -131,15 +145,23 @@ function compareLedgerEntries(left: LedgerEntryDraft, right: LedgerEntryDraft) {
   return typeOrder[left.type] - typeOrder[right.type]
 }
 
-function buildLedgerEntryDrafts(agency: AgencyLike, groups: GroupLike[], payments: PaymentLike[]) {
+function buildLedgerEntryDrafts(
+  groups: GroupLike[],
+  payments: PaymentLike[],
+  scopeAgencyIds: string[],
+) {
   const entries: LedgerEntryDraft[] = []
+  const scopeAgencyIdSet = new Set(scopeAgencyIds)
+  const isConsolidatedScope = scopeAgencyIds.length > 1
 
   groups.forEach((group) => {
     entries.push({
       id: `group-charge-${group.id}`,
       type: 'group_charge',
       date: group.createdAt,
-      description: `Group Charge - ${group.code}`,
+      description: isConsolidatedScope
+        ? `Group Charge - ${group.agency.code} / ${group.code}`
+        : `Group Charge - ${group.code}`,
       referenceNumber: group.code,
       debit: Number(toAmount(group.totalAmount ?? 0).toFixed(2)),
       credit: 0,
@@ -148,14 +170,18 @@ function buildLedgerEntryDrafts(agency: AgencyLike, groups: GroupLike[], payment
 
   payments.forEach((payment) => {
     const paymentDate = payment.paidAt ?? payment.createdAt
-    const isOwnPayment = payment.agencyId === agency.id
+    const isPaymentFromScope = scopeAgencyIdSet.has(payment.agencyId)
 
-    if (isOwnPayment) {
+    if (isPaymentFromScope) {
       entries.push({
         id: `payment-${payment.id}`,
         type: 'payment',
         date: paymentDate,
-        description: payment.description?.trim() || 'Payment received',
+        description:
+          payment.description?.trim() ||
+          (isConsolidatedScope
+            ? `Payment Received - ${payment.agency.code}`
+            : 'Payment received'),
         referenceNumber: payment.reference,
         debit: 0,
         credit: Number(toAmount(payment.amount).toFixed(2)),
@@ -163,14 +189,14 @@ function buildLedgerEntryDrafts(agency: AgencyLike, groups: GroupLike[], payment
     }
 
     payment.paymentGroups.forEach((paymentGroup) => {
-      const isIncomingAllocation = payment.agencyId !== agency.id
-      const belongsToCurrentAgency = paymentGroup.group.agencyId === agency.id
+      const isIncomingAllocation = !isPaymentFromScope
+      const belongsToCurrentScope = scopeAgencyIdSet.has(paymentGroup.group.agencyId)
 
-      if (isOwnPayment && belongsToCurrentAgency) {
+      if (isPaymentFromScope && belongsToCurrentScope) {
         return
       }
 
-      if (!isOwnPayment && !belongsToCurrentAgency) {
+      if (!isPaymentFromScope && !belongsToCurrentScope) {
         return
       }
 
@@ -198,7 +224,7 @@ function buildLedgerEntryDrafts(agency: AgencyLike, groups: GroupLike[], payment
 export type AgencyLedger = ReturnType<typeof buildAgencyLedger>
 
 export function buildAgencyLedger({ agency, groups, payments, filters }: AgencyLedgerInput) {
-  const ledgerDrafts = buildLedgerEntryDrafts(agency, groups, payments)
+  const ledgerDrafts = buildLedgerEntryDrafts(groups, payments, filters.scopeAgencyIds)
 
   const openingBalance = Number(
     (
@@ -265,6 +291,7 @@ export function buildAgencyLedger({ agency, groups, payments, filters }: AgencyL
       agencyId: agency.id,
       dateFrom: filters.dateFrom?.toISOString() ?? null,
       dateTo: filters.dateTo?.toISOString() ?? null,
+      includeBranches: filters.includeBranches,
     },
     agency: {
       id: agency.id,
@@ -272,6 +299,15 @@ export function buildAgencyLedger({ agency, groups, payments, filters }: AgencyL
       agentNumber: agency.code,
       city: agency.city ?? 'Unspecified',
       country: agency.country ?? 'Unspecified',
+      reportScope: filters.includeBranches ? 'CONSOLIDATED' : 'SINGLE',
+      scopeAgencyIds: filters.scopeAgencyIds,
+      branches: filters.branches.map((branch) => ({
+        id: branch.id,
+        agencyName: branch.name,
+        agentNumber: branch.code,
+        city: branch.city ?? 'Unspecified',
+        country: branch.country ?? 'Unspecified',
+      })),
     },
     summary: {
       openingBalance: Number(openingBalance.toFixed(2)),

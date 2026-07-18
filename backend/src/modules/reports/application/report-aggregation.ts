@@ -105,7 +105,10 @@ export function buildReportSummary({ payments, agencies, groups, year, month }: 
     }
   })
 
-  const countryRevenueMap = new Map<string, { revenue: number; outstandingBalance: number }>()
+  const countryRevenueMap = new Map<
+    string,
+    { revenue: number; outstandingBalance: number; advanceBalance: number; netBalance: number }
+  >()
   const agencyRevenueMap = new Map<
     string,
     {
@@ -115,11 +118,14 @@ export function buildReportSummary({ payments, agencies, groups, year, month }: 
       country: string
       revenue: number
       outstandingBalance: number
+      advanceBalance: number
+      netBalance: number
       paymentCount: number
     }
   >()
   const totalAmountByAgency = new Map<string, number>()
   const allocatedAmountByAgency = new Map<string, number>()
+  const advanceBalanceByAgency = new Map<string, number>()
 
   groups.forEach((group) => {
     totalAmountByAgency.set(
@@ -129,6 +135,15 @@ export function buildReportSummary({ payments, agencies, groups, year, month }: 
   })
 
   payments.forEach((payment) => {
+    const allocatedAmount = payment.paymentGroups.reduce((total, paymentGroup) => {
+      return total + toAmount(paymentGroup.allocatedAmount)
+    }, 0)
+
+    advanceBalanceByAgency.set(
+      payment.agencyId,
+      (advanceBalanceByAgency.get(payment.agencyId) ?? 0) + Math.max(toAmount(payment.amount) - allocatedAmount, 0),
+    )
+
     payment.paymentGroups.forEach((paymentGroup) => {
       const agencyId = paymentGroup.group.agencyId
       allocatedAmountByAgency.set(
@@ -142,6 +157,8 @@ export function buildReportSummary({ payments, agencies, groups, year, month }: 
     const countryBucket = countryRevenueMap.get(payment.country) ?? {
       revenue: 0,
       outstandingBalance: 0,
+      advanceBalance: 0,
+      netBalance: 0,
     }
     countryBucket.revenue += payment.amount
     countryRevenueMap.set(payment.country, countryBucket)
@@ -154,6 +171,8 @@ export function buildReportSummary({ payments, agencies, groups, year, month }: 
       country: payment.country,
       revenue: 0,
       outstandingBalance: 0,
+      advanceBalance: 0,
+      netBalance: 0,
       paymentCount: 0,
     }
 
@@ -165,17 +184,26 @@ export function buildReportSummary({ payments, agencies, groups, year, month }: 
   agencyRevenueMap.forEach((bucket, agencyId) => {
     const totalAmount = totalAmountByAgency.get(agencyId) ?? 0
     const allocatedAmount = allocatedAmountByAgency.get(agencyId) ?? 0
+    const advanceBalance = advanceBalanceByAgency.get(agencyId) ?? 0
     bucket.outstandingBalance = Math.max(totalAmount - allocatedAmount, 0)
+    bucket.advanceBalance = advanceBalance
+    bucket.netBalance = bucket.outstandingBalance - advanceBalance
 
     const countryBucket = countryRevenueMap.get(bucket.country)
     if (countryBucket) {
       countryBucket.outstandingBalance += bucket.outstandingBalance
+      countryBucket.advanceBalance += bucket.advanceBalance
+      countryBucket.netBalance += bucket.netBalance
     }
   })
 
   const totalRevenue = paymentSnapshots.reduce((total, payment) => total + payment.amount, 0)
   const totalOutstandingBalance = Array.from(agencyRevenueMap.values()).reduce(
     (total, agency) => total + agency.outstandingBalance,
+    0,
+  )
+  const totalAdvanceBalance = Array.from(agencyRevenueMap.values()).reduce(
+    (total, agency) => total + agency.advanceBalance,
     0,
   )
   const totalAllocated = paymentSnapshots.reduce(
@@ -188,6 +216,8 @@ export function buildReportSummary({ payments, agencies, groups, year, month }: 
       country,
       revenue: Number(values.revenue.toFixed(2)),
       outstandingBalance: Number(values.outstandingBalance.toFixed(2)),
+      advanceBalance: Number(values.advanceBalance.toFixed(2)),
+      netBalance: Number(values.netBalance.toFixed(2)),
     }))
     .sort((left, right) => right.revenue - left.revenue)
 
@@ -196,6 +226,8 @@ export function buildReportSummary({ payments, agencies, groups, year, month }: 
       ...item,
       revenue: Number(item.revenue.toFixed(2)),
       outstandingBalance: Number(item.outstandingBalance.toFixed(2)),
+      advanceBalance: Number(item.advanceBalance.toFixed(2)),
+      netBalance: Number(item.netBalance.toFixed(2)),
     }))
     .sort((left, right) => right.revenue - left.revenue)
 
@@ -211,6 +243,8 @@ export function buildReportSummary({ payments, agencies, groups, year, month }: 
     totals: {
       totalRevenue: Number(totalRevenue.toFixed(2)),
       outstandingBalance: Number(totalOutstandingBalance.toFixed(2)),
+      advanceBalance: Number(totalAdvanceBalance.toFixed(2)),
+      netBalance: Number((totalOutstandingBalance - totalAdvanceBalance).toFixed(2)),
       allocatedRevenue: Number(totalAllocated.toFixed(2)),
       allocationCoverageRate: totalRevenue > 0 ? Number((totalAllocated / totalRevenue).toFixed(4)) : 0,
       paymentCount: paymentSnapshots.length,

@@ -18,12 +18,22 @@ describe('agency ledger aggregation', () => {
           code: 'ATL-G001',
           totalAmount: 1200,
           createdAt: new Date('2026-05-01T08:00:00.000Z'),
+          agency: {
+            id: 'agency-1',
+            name: 'Atlas Travel',
+            code: 'ATL',
+          },
         },
         {
           id: 'group-2',
           code: 'ATL-G002',
           totalAmount: 250,
           createdAt: new Date('2026-06-04T08:00:00.000Z'),
+          agency: {
+            id: 'agency-1',
+            name: 'Atlas Travel',
+            code: 'ATL',
+          },
         },
       ],
       payments: [
@@ -97,6 +107,9 @@ describe('agency ledger aggregation', () => {
       filters: {
         dateFrom: new Date('2026-06-01T00:00:00.000Z'),
         dateTo: new Date('2026-06-30T23:59:59.999Z'),
+        includeBranches: false,
+        scopeAgencyIds: ['agency-1'],
+        branches: [],
       },
     })
 
@@ -112,5 +125,117 @@ describe('agency ledger aggregation', () => {
     expect(ledger.entries[2]?.type).toBe('payment')
     expect(ledger.entries[2]?.runningBalance).toBe(250)
     expect(ledger.entries[3]?.description).toBe('Closing Net Balance')
+    expect(ledger.filters.includeBranches).toBe(false)
+  })
+
+  it('builds a consolidated parent ledger without double-counting internal parent-to-branch allocations', () => {
+    const ledger = buildAgencyLedger({
+      agency: {
+        id: 'parent-1',
+        name: 'Fida Noor Travel',
+        code: 'FNT',
+        city: 'Jeddah',
+        country: 'Saudi Arabia',
+        openingBalance: 0,
+      },
+      groups: [
+        {
+          id: 'group-parent',
+          code: 'FNT-G001',
+          totalAmount: 500,
+          createdAt: new Date('2026-07-01T08:00:00.000Z'),
+          agency: {
+            id: 'parent-1',
+            name: 'Fida Noor Travel',
+            code: 'FNT',
+          },
+        },
+        {
+          id: 'group-branch',
+          code: 'ANS-G001',
+          totalAmount: 600,
+          createdAt: new Date('2026-07-02T08:00:00.000Z'),
+          agency: {
+            id: 'branch-1',
+            name: 'Alansar Travel',
+            code: 'ANS',
+          },
+        },
+      ],
+      payments: [
+        {
+          id: 'payment-parent',
+          reference: 'PAY-200',
+          amount: 1000,
+          currency: 'USD',
+          description: null,
+          paidAt: new Date('2026-07-03T10:00:00.000Z'),
+          createdAt: new Date('2026-07-03T09:00:00.000Z'),
+          agencyId: 'parent-1',
+          agency: {
+            id: 'parent-1',
+            name: 'Fida Noor Travel',
+            code: 'FNT',
+          },
+          paymentGroups: [
+            {
+              id: 'pg-parent',
+              allocatedAmount: 400,
+              notes: 'Parent allocation',
+              createdAt: new Date('2026-07-03T11:00:00.000Z'),
+              group: {
+                id: 'group-parent',
+                agencyId: 'parent-1',
+                code: 'FNT-G001',
+                agency: {
+                  id: 'parent-1',
+                  name: 'Fida Noor Travel',
+                  code: 'FNT',
+                },
+              },
+            },
+            {
+              id: 'pg-branch',
+              allocatedAmount: 500,
+              notes: 'Branch allocation',
+              createdAt: new Date('2026-07-03T11:30:00.000Z'),
+              group: {
+                id: 'group-branch',
+                agencyId: 'branch-1',
+                code: 'ANS-G001',
+                agency: {
+                  id: 'branch-1',
+                  name: 'Alansar Travel',
+                  code: 'ANS',
+                },
+              },
+            },
+          ],
+        },
+      ],
+      filters: {
+        includeBranches: true,
+        scopeAgencyIds: ['parent-1', 'branch-1'],
+        branches: [
+          {
+            id: 'branch-1',
+            name: 'Alansar Travel',
+            code: 'ANS',
+            city: 'Makkah',
+            country: 'Saudi Arabia',
+          },
+        ],
+      },
+    })
+
+    expect(ledger.filters.includeBranches).toBe(true)
+    expect(ledger.agency.reportScope).toBe('CONSOLIDATED')
+    expect(ledger.summary.totalDebits).toBe(1100)
+    expect(ledger.summary.totalCredits).toBe(1000)
+    expect(ledger.summary.outstandingBalance).toBe(100)
+    expect(ledger.entries.filter((entry) => entry.type === 'payment_allocation')).toHaveLength(0)
+    expect(ledger.entries.find((entry) => entry.type === 'payment')?.description).toBe(
+      'Payment Received - FNT',
+    )
   })
 })

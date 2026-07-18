@@ -32,6 +32,9 @@ export function AgencyReportPage() {
   const [selectedAgencyId, setSelectedAgencyId] = useState(
     searchParams.get('agencyId') ?? user?.agencyId ?? '',
   )
+  const [includeBranches, setIncludeBranches] = useState(
+    searchParams.get('includeBranches') === 'true',
+  )
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
   const [paymentStatus, setPaymentStatus] = useState<
@@ -68,26 +71,39 @@ export function AgencyReportPage() {
     setSearchParams((current) => {
       const next = new URLSearchParams(current)
       next.set('agencyId', selectedAgencyId)
+      if (includeBranches) {
+        next.set('includeBranches', 'true')
+      } else {
+        next.delete('includeBranches')
+      }
       return next
     })
-  }, [selectedAgencyId, setSearchParams])
+  }, [includeBranches, selectedAgencyId, setSearchParams])
+
+  const selectedAgency =
+    agencies.find((agency) => agency.id === selectedAgencyId) ?? null
+  const canConsolidate = selectedAgency?.agencyType === 'PARENT'
+
+  useEffect(() => {
+    if (!canConsolidate && includeBranches) {
+      setIncludeBranches(false)
+    }
+  }, [canConsolidate, includeBranches])
 
   const reportQueryParams = useMemo(
     () => ({
       agencyId: selectedAgencyId || undefined,
+      includeBranches: includeBranches && canConsolidate,
       dateFrom: dateFrom || undefined,
       dateTo: dateTo || undefined,
       groupNumber: debouncedSearchText || undefined,
       paymentStatus: paymentStatus || undefined,
     }),
-    [dateFrom, dateTo, debouncedSearchText, paymentStatus, selectedAgencyId],
+    [canConsolidate, dateFrom, dateTo, debouncedSearchText, includeBranches, paymentStatus, selectedAgencyId],
   )
 
   const agencyReportQuery = useAgencyReportQuery(reportQueryParams, Boolean(selectedAgencyId))
   const report = agencyReportQuery.data
-
-  const selectedAgency =
-    agencies.find((agency) => agency.id === selectedAgencyId) ?? null
 
   if (agenciesQuery.isPending && !agenciesQuery.data) {
     return <LoadingBlock label="Loading agencies for agency reporting..." />
@@ -130,9 +146,21 @@ export function AgencyReportPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        eyebrow="Dedicated agency reporting"
-        title="Review one agency across groups, allocations, and payment history"
-        description="This report reuses the existing agency, group, payment, and allocation data so finance and operations can inspect one travel agency in detail without changing the underlying business rules."
+        eyebrow={
+          report.agency.reportScope === 'CONSOLIDATED'
+            ? 'Consolidated parent reporting'
+            : 'Dedicated agency reporting'
+        }
+        title={
+          report.agency.reportScope === 'CONSOLIDATED'
+            ? 'Review a parent agency with all connected branch activity'
+            : 'Review one agency across groups, allocations, and payment history'
+        }
+        description={
+          report.agency.reportScope === 'CONSOLIDATED'
+            ? 'This consolidated report combines parent and branch groups, payments, allocations, and balances into one finance-ready view while preserving the underlying agency ledgers.'
+            : 'This report reuses the existing agency, group, payment, and allocation data so finance and operations can inspect one travel agency in detail without changing the underlying business rules.'
+        }
         action={
           <div className="grid gap-3 sm:grid-cols-3">
             <button
@@ -189,7 +217,7 @@ export function AgencyReportPage() {
         title="Filters"
         description="Use the same scoped filters for the agency summary, group details, payment history, and export actions."
       >
-        <div className="grid gap-4 md:grid-cols-5">
+        <div className="grid gap-4 md:grid-cols-6">
           {isSuperAdmin ? (
             <label className="block md:col-span-2">
               <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.22em] text-slate-400">
@@ -227,6 +255,23 @@ export function AgencyReportPage() {
               value={searchText}
               onChange={updateSearchText}
             />
+          </label>
+
+          <label className="block">
+            <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.22em] text-slate-400">
+              Report scope
+            </span>
+            <select
+              className="w-full rounded-2xl border border-white/10 bg-[rgba(7,15,27,0.55)] px-4 py-3 text-sm text-white outline-none transition focus:border-cyan-300/50"
+              value={includeBranches && canConsolidate ? 'consolidated' : 'single'}
+              onChange={(event) => setIncludeBranches(event.target.value === 'consolidated')}
+              disabled={!canConsolidate}
+            >
+              <option value="single">Selected agency only</option>
+              <option value="consolidated" disabled={!canConsolidate}>
+                Parent + branches
+              </option>
+            </select>
           </label>
 
           <label className="block">
@@ -286,6 +331,7 @@ export function AgencyReportPage() {
             </p>
             <p className="mt-3 text-sm text-slate-100">
               {report.agency.agencyName}
+              {report.filters.includeBranches ? ' • Consolidated' : ' • Single agency'}
               {report.filters.groupNumber ? ` • ${report.filters.groupNumber}` : ' • All groups'}
               {report.filters.paymentStatus
                 ? ` • ${report.filters.paymentStatus.replace(/_/g, ' ')}`
@@ -294,6 +340,39 @@ export function AgencyReportPage() {
           </div>
         </div>
       </Panel>
+
+      {report.agency.reportScope === 'CONSOLIDATED' ? (
+        <Panel
+          title="Scope Coverage"
+          description="The consolidated parent report includes the following connected agencies."
+        >
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+            <div className="rounded-[22px] border border-cyan-300/20 bg-cyan-400/10 px-4 py-4">
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-cyan-100">
+                Parent agency
+              </p>
+              <p className="mt-3 text-sm font-semibold text-white">{report.agency.agencyName}</p>
+              <p className="mt-1 text-xs uppercase tracking-[0.18em] text-cyan-100/80">
+                {report.agency.agentNumber}
+              </p>
+            </div>
+            {report.agency.branches.map((branch) => (
+              <div
+                key={branch.id}
+                className="rounded-[22px] border border-white/10 bg-[rgba(7,15,27,0.45)] px-4 py-4"
+              >
+                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
+                  Branch
+                </p>
+                <p className="mt-3 text-sm font-semibold text-white">{branch.agencyName}</p>
+                <p className="mt-1 text-xs uppercase tracking-[0.18em] text-slate-400">
+                  {branch.agentNumber} • {branch.country}
+                </p>
+              </div>
+            ))}
+          </div>
+        </Panel>
+      ) : null}
 
       <div className="grid gap-4 xl:grid-cols-4">
         {[
@@ -380,6 +459,9 @@ export function AgencyReportPage() {
                   <div>
                     <p className="text-sm font-semibold text-white">{group.groupNumber}</p>
                     <p className="mt-1 text-sm text-slate-300">
+                      {report.agency.reportScope === 'CONSOLIDATED'
+                        ? `${group.agencyCode} • `
+                        : ''}
                       {formatNumber(group.numberOfPax)} pax • {formatCurrency(group.pricePerPax)} per
                       pax
                     </p>
@@ -470,7 +552,18 @@ export function AgencyReportPage() {
                       {payment.paymentMethod.replace(/_/g, ' ')}
                     </p>
                     <p className="mt-2 text-xs uppercase tracking-[0.18em] text-slate-400">
-                      {payment.reference} • Paid by {payment.paidByAgencyCode} • {payment.remarks}
+                      {payment.reference} • Paid by {payment.paidByAgencyCode} •{' '}
+                      {payment.paymentGroups.length > 0
+                        ? payment.paymentGroups
+                            .map((group) =>
+                              report.agency.reportScope === 'CONSOLIDATED'
+                                ? `${group.agencyCode}/${group.groupNumber}`
+                                : group.groupNumber,
+                            )
+                            .join(', ')
+                        : 'No allocations'}
+                      {' • '}
+                      {payment.remarks}
                     </p>
                   </div>
                   <div className="flex items-center gap-4">

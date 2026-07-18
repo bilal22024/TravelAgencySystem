@@ -64,8 +64,8 @@ export function ReportsPage() {
     <div className="space-y-6">
       <PageHeader
         eyebrow="Reports and exports"
-        title="Deploy-ready reporting with charts and downloadable exports"
-        description="Phase 6 introduces a dedicated reporting API, charted dashboard summaries, and PDF, Excel, and CSV exports built from the same backend aggregation."
+        title="Review consolidated finance summaries with export-ready reporting"
+        description="Phase 3 extends reporting so parent agencies can review consolidated revenue, outstanding balances, advance balances, and net exposure from the same backend aggregation used by exports."
         action={
           <div className="grid gap-3 sm:grid-cols-3">
             {[
@@ -161,10 +161,10 @@ export function ReportsPage() {
         </div>
       </Panel>
 
-      <div className="grid gap-4 xl:grid-cols-4">
+      <div className="grid gap-4 xl:grid-cols-5">
         {[
           {
-            label: 'Monthly revenue',
+            label: 'Payments received',
             value: formatCurrency(report.totals.totalRevenue),
             detail: `${formatNumber(report.totals.paymentCount)} payments captured in the selected period.`,
           },
@@ -172,6 +172,16 @@ export function ReportsPage() {
             label: 'Outstanding balances',
             value: formatCurrency(report.totals.outstandingBalance),
             detail: 'Remaining unpaid balances after live allocation calculations.',
+          },
+          {
+            label: 'Advance balances',
+            value: formatCurrency(report.totals.advanceBalance),
+            detail: 'Available agency credit balances across the visible reporting scope.',
+          },
+          {
+            label: 'Net balance',
+            value: formatCurrency(report.totals.netBalance),
+            detail: 'Outstanding balance after deducting visible advance balances.',
           },
           {
             label: 'Allocated revenue',
@@ -266,7 +276,7 @@ export function ReportsPage() {
       <div className="grid gap-6 xl:grid-cols-2">
         <Panel
           title="Agency revenue table"
-          description="Agency-level revenue, outstanding balances, and payment counts from the live report snapshot."
+          description="Agency-level totals for payments, outstanding balances, advance balances, and net position from the live report snapshot."
         >
           <div className="space-y-3">
             {report.agencyRevenue.slice(0, 8).map((agency) => (
@@ -285,8 +295,8 @@ export function ReportsPage() {
                     {formatCurrency(agency.revenue)}
                   </p>
                   <p className="mt-1 text-xs uppercase tracking-[0.18em] text-slate-400">
-                    Outstanding {formatCurrency(agency.outstandingBalance)} • {agency.paymentCount}{' '}
-                    payments
+                    Outstanding {formatCurrency(agency.outstandingBalance)} • Advance{' '}
+                    {formatCurrency(agency.advanceBalance)} • Net {formatCurrency(agency.netBalance)}
                   </p>
                 </div>
               </div>
@@ -304,8 +314,9 @@ export function ReportsPage() {
               backend downloads stay aligned in development and production.
             </p>
             <p>
-              Export endpoints respect the authenticated agency scope, which means non-super-admin
-              users only receive data from their own agency.
+              Export endpoints respect the authenticated agency scope, which means parent agencies
+              receive their consolidated parent-and-branch scope while branch users remain limited
+              to their own data.
             </p>
             <p>
               The same filtered report summary powers the charts, the on-screen tables, and the

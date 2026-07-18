@@ -104,6 +104,57 @@ function getScopedAgencyId(
   return requestedAgencyId
 }
 
+async function getScopedReportAgency(
+  authUser: AuthenticatedUser,
+  accessibleAgencyIds: string[] | null,
+  requestedAgencyId: string | undefined,
+  requestedIncludeBranches: boolean | undefined,
+) {
+  const agencyId = getScopedAgencyId(authUser, accessibleAgencyIds, requestedAgencyId)
+  const agency = await prisma.agency.findFirst({
+    where: {
+      id: agencyId,
+      ...getAgencyScopeWhere(accessibleAgencyIds),
+    },
+    select: {
+      id: true,
+      name: true,
+      code: true,
+      city: true,
+      country: true,
+      openingBalance: true,
+      agencyType: true,
+      branches: {
+        select: {
+          id: true,
+          name: true,
+          code: true,
+          city: true,
+          country: true,
+        },
+        orderBy: {
+          name: 'asc',
+        },
+      },
+    },
+  })
+
+  if (!agency) {
+    throw new AppError('Agency not found', 404)
+  }
+
+  const includeBranches = requestedIncludeBranches === true && agency.agencyType === 'PARENT'
+  const scopeAgencyIds = includeBranches
+    ? [agency.id, ...agency.branches.map((branch) => branch.id)]
+    : [agency.id]
+
+  return {
+    agency,
+    includeBranches,
+    scopeAgencyIds,
+  }
+}
+
 function toDayRange(dateFrom?: Date, dateTo?: Date) {
   const normalizedDateFrom = dateFrom
     ? new Date(
@@ -338,26 +389,20 @@ export async function exportReport(
 
 export async function getAgencyReport(authUser: AuthenticatedUser, query: AgencyReportQuery) {
   const accessibleAgencyIds = await getAccessibleAgencyIds(authUser)
-  const agencyId = getScopedAgencyId(authUser, accessibleAgencyIds, query.agencyId)
+  const scopedAgency = await getScopedReportAgency(
+    authUser,
+    accessibleAgencyIds,
+    query.agencyId,
+    query.includeBranches,
+  )
   const { dateFrom, dateTo } = toDayRange(query.dateFrom, query.dateTo)
 
-  const [agency, groups, payments] = await prisma.$transaction([
-    prisma.agency.findFirst({
-      where: {
-        id: agencyId,
-        ...getAgencyScopeWhere(accessibleAgencyIds),
-      },
-      select: {
-        id: true,
-        name: true,
-        code: true,
-        city: true,
-        country: true,
-      },
-    }),
+  const [groups, payments] = await prisma.$transaction([
     prisma.group.findMany({
       where: {
-        agencyId,
+        agencyId: {
+          in: scopedAgency.scopeAgencyIds,
+        },
         ...(query.groupNumber
           ? {
               code: { contains: query.groupNumber, mode: 'insensitive' },
@@ -369,6 +414,13 @@ export async function getAgencyReport(authUser: AuthenticatedUser, query: Agency
         code: true,
         travelerCount: true,
         totalAmount: true,
+        agency: {
+          select: {
+            id: true,
+            name: true,
+            code: true,
+          },
+        },
       },
       orderBy: {
         code: 'asc',
@@ -378,13 +430,17 @@ export async function getAgencyReport(authUser: AuthenticatedUser, query: Agency
       where: {
         OR: [
           {
-            agencyId,
+            agencyId: {
+              in: scopedAgency.scopeAgencyIds,
+            },
           },
           {
             paymentGroups: {
               some: {
                 group: {
-                  agencyId,
+                  agencyId: {
+                    in: scopedAgency.scopeAgencyIds,
+                  },
                   ...(query.groupNumber
                     ? {
                         code: {
@@ -420,7 +476,9 @@ export async function getAgencyReport(authUser: AuthenticatedUser, query: Agency
         paymentGroups: {
           where: {
             group: {
-              agencyId,
+              agencyId: {
+                in: scopedAgency.scopeAgencyIds,
+              },
               ...(query.groupNumber
                 ? {
                     code: { contains: query.groupNumber, mode: 'insensitive' },
@@ -435,6 +493,13 @@ export async function getAgencyReport(authUser: AuthenticatedUser, query: Agency
               select: {
                 id: true,
                 code: true,
+                agency: {
+                  select: {
+                    id: true,
+                    name: true,
+                    code: true,
+                  },
+                },
               },
             },
           },
@@ -451,12 +516,8 @@ export async function getAgencyReport(authUser: AuthenticatedUser, query: Agency
     }),
   ])
 
-  if (!agency) {
-    throw new AppError('Agency not found', 404)
-  }
-
   return buildAgencyReport({
-    agency,
+    agency: scopedAgency.agency,
     groups,
     payments,
     filters: {
@@ -464,6 +525,9 @@ export async function getAgencyReport(authUser: AuthenticatedUser, query: Agency
       dateTo,
       groupCode: query.groupNumber,
       paymentStatus: query.paymentStatus,
+      includeBranches: scopedAgency.includeBranches,
+      scopeAgencyIds: scopedAgency.scopeAgencyIds,
+      branches: scopedAgency.agency.branches,
     },
   })
 }
@@ -478,20 +542,32 @@ export async function exportAgencyReport(
   switch (format) {
     case 'csv':
       return {
-        fileName: buildAgencyReportFileName(report.agency.agentNumber, 'csv'),
+        fileName: buildAgencyReportFileName(
+          report.agency.agentNumber,
+          query.includeBranches === true,
+          'csv',
+        ),
         contentType: 'text/csv; charset=utf-8',
         body: buildAgencyReportCsv(report),
       }
     case 'excel':
       return {
-        fileName: buildAgencyReportFileName(report.agency.agentNumber, 'xlsx'),
+        fileName: buildAgencyReportFileName(
+          report.agency.agentNumber,
+          query.includeBranches === true,
+          'xlsx',
+        ),
         contentType:
           'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
         body: await buildAgencyReportExcel(report),
       }
     case 'pdf':
       return {
-        fileName: buildAgencyReportFileName(report.agency.agentNumber, 'pdf'),
+        fileName: buildAgencyReportFileName(
+          report.agency.agentNumber,
+          query.includeBranches === true,
+          'pdf',
+        ),
         contentType: 'application/pdf',
         body: await buildAgencyReportPdf(report),
       }
@@ -500,33 +576,33 @@ export async function exportAgencyReport(
 
 export async function getAgencyLedger(authUser: AuthenticatedUser, query: AgencyLedgerQuery) {
   const accessibleAgencyIds = await getAccessibleAgencyIds(authUser)
-  const agencyId = getScopedAgencyId(authUser, accessibleAgencyIds, query.agencyId)
+  const scopedAgency = await getScopedReportAgency(
+    authUser,
+    accessibleAgencyIds,
+    query.agencyId,
+    query.includeBranches,
+  )
   const { dateFrom, dateTo } = toDayRange(query.dateFrom, query.dateTo)
 
-  const [agency, groups, payments] = await prisma.$transaction([
-    prisma.agency.findFirst({
-      where: {
-        id: agencyId,
-        ...getAgencyScopeWhere(accessibleAgencyIds),
-      },
-      select: {
-        id: true,
-        name: true,
-        code: true,
-        city: true,
-        country: true,
-        openingBalance: true,
-      },
-    }),
+  const [groups, payments] = await prisma.$transaction([
     prisma.group.findMany({
       where: {
-        agencyId,
+        agencyId: {
+          in: scopedAgency.scopeAgencyIds,
+        },
       },
       select: {
         id: true,
         code: true,
         totalAmount: true,
         createdAt: true,
+        agency: {
+          select: {
+            id: true,
+            name: true,
+            code: true,
+          },
+        },
       },
       orderBy: {
         createdAt: 'asc',
@@ -536,13 +612,17 @@ export async function getAgencyLedger(authUser: AuthenticatedUser, query: Agency
       where: {
         OR: [
           {
-            agencyId,
+            agencyId: {
+              in: scopedAgency.scopeAgencyIds,
+            },
           },
           {
             paymentGroups: {
               some: {
                 group: {
-                  agencyId,
+                  agencyId: {
+                    in: scopedAgency.scopeAgencyIds,
+                  },
                 },
               },
             },
@@ -599,17 +679,16 @@ export async function getAgencyLedger(authUser: AuthenticatedUser, query: Agency
     }),
   ])
 
-  if (!agency) {
-    throw new AppError('Agency not found', 404)
-  }
-
   return buildAgencyLedger({
-    agency,
+    agency: scopedAgency.agency,
     groups,
     payments,
     filters: {
       dateFrom,
       dateTo,
+      includeBranches: scopedAgency.includeBranches,
+      scopeAgencyIds: scopedAgency.scopeAgencyIds,
+      branches: scopedAgency.agency.branches,
     },
   })
 }
@@ -621,7 +700,10 @@ export async function exportAgencyLedgerPdf(
   const ledger = await getAgencyLedger(authUser, query)
 
   return {
-    fileName: buildAgencyLedgerFileName(ledger.agency.agentNumber),
+    fileName: buildAgencyLedgerFileName(
+      ledger.agency.agentNumber,
+      query.includeBranches === true,
+    ),
     contentType: 'application/pdf',
     body: await buildAgencyLedgerPdf(ledger),
   }
@@ -802,11 +884,14 @@ function buildReportFileName(extension: 'csv' | 'xlsx' | 'pdf', query: ReportQue
 
 function buildAgencyReportFileName(
   agencyCode: string,
+  includeBranches: boolean,
   extension: 'csv' | 'xlsx' | 'pdf',
 ) {
-  return `travel-agency-agency-report-${agencyCode.toLowerCase()}.${extension}`
+  const scopeSuffix = includeBranches ? '-consolidated' : ''
+  return `travel-agency-agency-report-${agencyCode.toLowerCase()}${scopeSuffix}.${extension}`
 }
 
-function buildAgencyLedgerFileName(agencyCode: string) {
-  return `travel-agency-agency-ledger-${agencyCode.toLowerCase()}.pdf`
+function buildAgencyLedgerFileName(agencyCode: string, includeBranches: boolean) {
+  const scopeSuffix = includeBranches ? '-consolidated' : ''
+  return `travel-agency-agency-ledger-${agencyCode.toLowerCase()}${scopeSuffix}.pdf`
 }

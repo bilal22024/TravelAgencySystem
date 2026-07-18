@@ -20,6 +20,7 @@ export type ReportQuery = z.infer<typeof reportQuerySchema>
 export const agencyReportQuerySchema = z
   .object({
     agencyId: uuidSchema.optional(),
+    includeBranches: z.coerce.boolean().optional().default(false),
     dateFrom: isoDateSchema.optional(),
     dateTo: isoDateSchema.optional(),
     groupNumber: optionalTrimmedString(30),
@@ -40,6 +41,7 @@ export type AgencyReportQuery = z.infer<typeof agencyReportQuerySchema>
 export const agencyLedgerQuerySchema = z
   .object({
     agencyId: uuidSchema.optional(),
+    includeBranches: z.coerce.boolean().optional().default(false),
     dateFrom: isoDateSchema.optional(),
     dateTo: isoDateSchema.optional(),
   })

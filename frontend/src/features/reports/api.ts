@@ -21,6 +21,7 @@ export type ReportQueryParams = {
 
 export type AgencyReportQueryParams = {
   agencyId?: string
+  includeBranches?: boolean
   dateFrom?: string
   dateTo?: string
   groupNumber?: string
@@ -29,6 +30,7 @@ export type AgencyReportQueryParams = {
 
 export type AgencyLedgerQueryParams = {
   agencyId?: string
+  includeBranches?: boolean
   dateFrom?: string
   dateTo?: string
 }
@@ -66,6 +68,7 @@ export async function getAgencyReport(params: AgencyReportQueryParams) {
   const response = await apiRequest<EntityResponse<AgencyReport>>(
     `/reports/agency${buildQueryString({
       agencyId: params.agencyId,
+      includeBranches: params.includeBranches,
       dateFrom: params.dateFrom,
       dateTo: params.dateTo,
       groupNumber: params.groupNumber,
@@ -89,6 +92,7 @@ export async function getAgencyLedger(params: AgencyLedgerQueryParams) {
   const response = await apiRequest<EntityResponse<AgencyLedger>>(
     `/reports/agency-ledger${buildQueryString({
       agencyId: params.agencyId,
+      includeBranches: params.includeBranches,
       dateFrom: params.dateFrom,
       dateTo: params.dateTo,
     })}`,
@@ -176,6 +180,7 @@ export async function downloadAgencyReportExport(
   const response = await fetch(
     `${environment.apiBaseUrl}/reports/agency/export/${format}${buildQueryString({
       agencyId: params.agencyId,
+      includeBranches: params.includeBranches,
       dateFrom: params.dateFrom,
       dateTo: params.dateTo,
       groupNumber: params.groupNumber,
@@ -216,6 +221,7 @@ export async function downloadAgencyLedgerPdf(
   const response = await fetch(
     `${environment.apiBaseUrl}/reports/agency-ledger/export/pdf${buildQueryString({
       agencyId: params.agencyId,
+      includeBranches: params.includeBranches,
       dateFrom: params.dateFrom,
       dateTo: params.dateTo,
     })}`,

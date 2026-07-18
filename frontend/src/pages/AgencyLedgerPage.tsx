@@ -24,6 +24,9 @@ export function AgencyLedgerPage() {
   const [selectedAgencyId, setSelectedAgencyId] = useState(
     searchParams.get('agencyId') ?? user?.agencyId ?? '',
   )
+  const [includeBranches, setIncludeBranches] = useState(
+    searchParams.get('includeBranches') === 'true',
+  )
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
   const [isExportingPdf, setIsExportingPdf] = useState(false)
@@ -56,22 +59,36 @@ export function AgencyLedgerPage() {
     setSearchParams((current) => {
       const next = new URLSearchParams(current)
       next.set('agencyId', selectedAgencyId)
+      if (includeBranches) {
+        next.set('includeBranches', 'true')
+      } else {
+        next.delete('includeBranches')
+      }
       return next
     })
-  }, [selectedAgencyId, setSearchParams])
+  }, [includeBranches, selectedAgencyId, setSearchParams])
+
+  const selectedAgency = agencies.find((agency) => agency.id === selectedAgencyId) ?? null
+  const canConsolidate = selectedAgency?.agencyType === 'PARENT'
+
+  useEffect(() => {
+    if (!canConsolidate && includeBranches) {
+      setIncludeBranches(false)
+    }
+  }, [canConsolidate, includeBranches])
 
   const ledgerQueryParams = useMemo(
     () => ({
       agencyId: selectedAgencyId || undefined,
+      includeBranches: includeBranches && canConsolidate,
       dateFrom: dateFrom || undefined,
       dateTo: dateTo || undefined,
     }),
-    [dateFrom, dateTo, selectedAgencyId],
+    [canConsolidate, dateFrom, dateTo, includeBranches, selectedAgencyId],
   )
 
   const agencyLedgerQuery = useAgencyLedgerQuery(ledgerQueryParams, Boolean(selectedAgencyId))
   const ledger = agencyLedgerQuery.data
-  const selectedAgency = agencies.find((agency) => agency.id === selectedAgencyId) ?? null
 
   if (agenciesQuery.isPending && !agenciesQuery.data) {
     return <LoadingBlock label="Loading agencies for the agency ledger..." />
@@ -114,9 +131,21 @@ export function AgencyLedgerPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        eyebrow="Agency ledger"
-        title="Track every agency transaction in chronological order"
-        description="This ledger now combines opening balance, group charges, direct payments, incoming allocations, and advance-balance usage into one finance-friendly running balance."
+        eyebrow={
+          ledger.agency.reportScope === 'CONSOLIDATED'
+            ? 'Consolidated parent ledger'
+            : 'Agency ledger'
+        }
+        title={
+          ledger.agency.reportScope === 'CONSOLIDATED'
+            ? 'Track parent and branch balances in one combined ledger'
+            : 'Track every agency transaction in chronological order'
+        }
+        description={
+          ledger.agency.reportScope === 'CONSOLIDATED'
+            ? 'This consolidated ledger combines parent and branch group charges, payments, and net external allocations while excluding internal transfers inside the same parent scope.'
+            : 'This ledger now combines opening balance, group charges, direct payments, incoming allocations, and advance-balance usage into one finance-friendly running balance.'
+        }
         action={
           <div className="grid gap-3 sm:grid-cols-2">
             <button
@@ -154,7 +183,7 @@ export function AgencyLedgerPage() {
         title="Filters"
         description="Filter the ledger by agency and date range while keeping the opening balance aligned with transactions before the selected period."
       >
-        <div className="grid gap-4 md:grid-cols-4">
+        <div className="grid gap-4 md:grid-cols-5">
           {isSuperAdmin ? (
             <label className="block md:col-span-2">
               <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.22em] text-slate-400">
@@ -185,6 +214,23 @@ export function AgencyLedgerPage() {
 
           <label className="block">
             <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.22em] text-slate-400">
+              Ledger scope
+            </span>
+            <select
+              className="w-full rounded-2xl border border-white/10 bg-[rgba(7,15,27,0.55)] px-4 py-3 text-sm text-white outline-none transition focus:border-cyan-300/50"
+              value={includeBranches && canConsolidate ? 'consolidated' : 'single'}
+              onChange={(event) => setIncludeBranches(event.target.value === 'consolidated')}
+              disabled={!canConsolidate}
+            >
+              <option value="single">Selected agency only</option>
+              <option value="consolidated" disabled={!canConsolidate}>
+                Parent + branches
+              </option>
+            </select>
+          </label>
+
+          <label className="block">
+            <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.22em] text-slate-400">
               Date from
             </span>
             <input
@@ -208,6 +254,39 @@ export function AgencyLedgerPage() {
           </label>
         </div>
       </Panel>
+
+      {ledger.agency.reportScope === 'CONSOLIDATED' ? (
+        <Panel
+          title="Scope Coverage"
+          description="The consolidated ledger includes the parent agency and these connected branches."
+        >
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+            <div className="rounded-[22px] border border-cyan-300/20 bg-cyan-400/10 px-4 py-4">
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-cyan-100">
+                Parent agency
+              </p>
+              <p className="mt-3 text-sm font-semibold text-white">{ledger.agency.agencyName}</p>
+              <p className="mt-1 text-xs uppercase tracking-[0.18em] text-cyan-100/80">
+                {ledger.agency.agentNumber}
+              </p>
+            </div>
+            {ledger.agency.branches.map((branch) => (
+              <div
+                key={branch.id}
+                className="rounded-[22px] border border-white/10 bg-[rgba(7,15,27,0.45)] px-4 py-4"
+              >
+                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
+                  Branch
+                </p>
+                <p className="mt-3 text-sm font-semibold text-white">{branch.agencyName}</p>
+                <p className="mt-1 text-xs uppercase tracking-[0.18em] text-slate-400">
+                  {branch.agentNumber} • {branch.country}
+                </p>
+              </div>
+            ))}
+          </div>
+        </Panel>
+      ) : null}
 
       <div className="grid gap-4 xl:grid-cols-5">
         {[

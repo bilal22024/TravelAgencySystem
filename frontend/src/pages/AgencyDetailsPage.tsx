@@ -65,6 +65,14 @@ export function AgencyDetailsPage() {
             >
               Open agency report
             </Link>
+            {agency.agencyType === 'PARENT' ? (
+              <Link
+                className="inline-flex items-center justify-center rounded-2xl border border-cyan-300/20 bg-cyan-400/10 px-4 py-2 text-sm font-semibold text-cyan-100 transition hover:bg-cyan-400/20"
+                to={`/reports/agency?agencyId=${agency.id}&includeBranches=true`}
+              >
+                Open consolidated report
+              </Link>
+            ) : null}
           </div>
         }
       />
@@ -289,8 +297,8 @@ export function AgencyDetailsPage() {
       </div>
 
       <Panel
-        title="Phase 2 Notes"
-        description="The financial foundation now includes advance-balance semantics and parent-paid branch allocation support."
+        title="Phase 3 Reporting Notes"
+        description="Reporting now supports both single-agency review and parent-level consolidated reporting."
       >
         <div className="grid gap-4 md:grid-cols-3">
           <div className="rounded-[20px] border border-white/10 bg-white/[0.04] px-4 py-4">
@@ -308,7 +316,7 @@ export function AgencyDetailsPage() {
               Financial Summary
             </div>
             <p className="mt-3 text-sm text-slate-300">
-              The summary now separates outstanding balance, advance balance, and net balance for finance-friendly review.
+              The summary separates outstanding balance, advance balance, and net balance for finance-friendly review.
             </p>
           </div>
           <div className="rounded-[20px] border border-white/10 bg-white/[0.04] px-4 py-4">
@@ -317,7 +325,7 @@ export function AgencyDetailsPage() {
               Consolidation
             </div>
             <p className="mt-3 text-sm text-slate-300">
-              Parent totals currently roll up branch groups and payments for viewing. Consolidated ledger and reports arrive in Phase 3.
+              Parent agencies can now open consolidated report and ledger views that combine parent and branch balances without changing branch-level ledgers.
             </p>
           </div>
         </div>
