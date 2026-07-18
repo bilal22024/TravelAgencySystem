@@ -116,7 +116,7 @@ export function AgencyLedgerPage() {
       <PageHeader
         eyebrow="Agency ledger"
         title="Track every agency transaction in chronological order"
-        description="This ledger reuses the existing payment and allocation records to show opening balance, payment credits, adjustment debits, and the final outstanding balance without altering the current calculation rules."
+        description="This ledger now combines opening balance, group charges, direct payments, incoming allocations, and advance-balance usage into one finance-friendly running balance."
         action={
           <div className="grid gap-3 sm:grid-cols-2">
             <button
@@ -209,12 +209,13 @@ export function AgencyLedgerPage() {
         </div>
       </Panel>
 
-      <div className="grid gap-4 xl:grid-cols-4">
+      <div className="grid gap-4 xl:grid-cols-5">
         {[
           ['Agency', ledger.agency.agencyName, `${ledger.agency.country} • ${ledger.agency.city}`],
           ['Opening Balance', formatCurrency(ledger.summary.openingBalance), 'Carried forward from transactions before the selected date range.'],
-          ['Total Credits', formatCurrency(ledger.summary.totalCredits), 'Payment transactions inside the visible ledger period.'],
-          ['Outstanding Balance', formatCurrency(ledger.summary.outstandingBalance), 'Closing running balance after all visible transactions.'],
+          ['Total Credits', formatCurrency(ledger.summary.totalCredits), 'Payments and allocation credits inside the visible ledger period.'],
+          ['Outstanding Balance', formatCurrency(ledger.summary.outstandingBalance), 'Current unpaid balance after visible transactions.'],
+          ['Advance Balance', formatCurrency(ledger.summary.advanceBalance), 'Available credit balance after visible transactions.'],
         ].map(([label, value, detail]) => (
           <div
             key={label}
@@ -231,14 +232,15 @@ export function AgencyLedgerPage() {
 
       <Panel
         title="Ledger Summary"
-        description="A compact view of the carried-forward balance, visible debits, visible credits, and final outstanding balance."
+        description="A compact view of the carried-forward balance, visible debits, credits, outstanding amount, and remaining advance."
       >
-        <div className="grid gap-4 md:grid-cols-4">
+        <div className="grid gap-4 md:grid-cols-5">
           {[
             ['Opening Balance', ledger.summary.openingBalance],
             ['Total Debits', ledger.summary.totalDebits],
             ['Total Credits', ledger.summary.totalCredits],
             ['Outstanding Balance', ledger.summary.outstandingBalance],
+            ['Net Balance', ledger.summary.netBalance],
           ].map(([label, value]) => (
             <div
               key={label}
@@ -257,7 +259,7 @@ export function AgencyLedgerPage() {
 
       <Panel
         title="Transactions"
-        description="Every opening balance, payment, adjustment, and outstanding balance row in chronological order."
+        description="Every opening balance, group charge, payment, allocation, advance use, and closing balance row in chronological order."
         action={
           agencyLedgerQuery.isFetching ? (
             <span className="text-xs uppercase tracking-[0.18em] text-slate-400">Refreshing...</span>

@@ -21,6 +21,18 @@ describe('report aggregation', () => {
           isActive: false,
         },
       ],
+      groups: [
+        {
+          id: 'group-1',
+          agencyId: 'agency-1',
+          totalAmount: 1000,
+        },
+        {
+          id: 'group-2',
+          agencyId: 'agency-2',
+          totalAmount: 500,
+        },
+      ],
       payments: [
         {
           id: 'payment-1',
@@ -38,7 +50,7 @@ describe('report aggregation', () => {
             country: 'UAE',
             isActive: true,
           },
-          paymentGroups: [{ allocatedAmount: 400 }],
+          paymentGroups: [{ allocatedAmount: 400, group: { id: 'group-1', agencyId: 'agency-1', code: 'ATL-G001' } }],
         },
         {
           id: 'payment-2',
@@ -56,7 +68,7 @@ describe('report aggregation', () => {
             country: 'Saudi Arabia',
             isActive: false,
           },
-          paymentGroups: [{ allocatedAmount: 500 }],
+          paymentGroups: [{ allocatedAmount: 500, group: { id: 'group-2', agencyId: 'agency-2', code: 'SKY-G001' } }],
         },
       ],
     })

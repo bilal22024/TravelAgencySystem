@@ -1,6 +1,4 @@
 import type { Prisma } from '@prisma/client'
-import { getPaymentSummary } from '../../payments/application/payment-calculations.js'
-
 type AgencyLike = {
   id: string
   name: string
@@ -18,6 +16,7 @@ type GroupStatsLike = {
     | true
   _sum?: {
     travelerCount?: number | null
+    totalAmount?: number | string | { toString(): string } | null
   }
 }
 
@@ -31,6 +30,9 @@ type PaymentLike = {
   createdAt: Date
   paymentGroups: Array<{
     allocatedAmount: Prisma.Decimal | number | string | { toString(): string }
+    group?: {
+      agencyId: string
+    }
   }>
 }
 
@@ -121,15 +123,45 @@ export function buildOutstandingBalanceReport({
       {
         totalGroups: stat._count && typeof stat._count !== 'boolean' ? stat._count._all ?? 0 : 0,
         totalPax: stat._sum?.travelerCount ?? 0,
+        totalAmount: stat._sum?.totalAmount ?? 0,
       },
     ]),
   )
   const paymentMap = new Map<string, PaymentLike[]>()
+  const allocatedAmountByAgency = new Map<string, number>()
+  const advanceBalanceByAgency = new Map<string, number>()
 
   payments.forEach((payment) => {
-    const bucket = paymentMap.get(payment.agencyId) ?? []
-    bucket.push(payment)
-    paymentMap.set(payment.agencyId, bucket)
+    const touchedAgencyIds = new Set<string>([payment.agencyId])
+
+    payment.paymentGroups.forEach((paymentGroup) => {
+      const receivingAgencyId = paymentGroup.group?.agencyId
+
+      if (!receivingAgencyId) {
+        return
+      }
+
+      touchedAgencyIds.add(receivingAgencyId)
+      allocatedAmountByAgency.set(
+        receivingAgencyId,
+        (allocatedAmountByAgency.get(receivingAgencyId) ?? 0) + toAmount(paymentGroup.allocatedAmount),
+      )
+    })
+
+    const allocatedAmount = payment.paymentGroups.reduce(
+      (total, paymentGroup) => total + toAmount(paymentGroup.allocatedAmount),
+      0,
+    )
+    advanceBalanceByAgency.set(
+      payment.agencyId,
+      (advanceBalanceByAgency.get(payment.agencyId) ?? 0) + Math.max(toAmount(payment.amount) - allocatedAmount, 0),
+    )
+
+    touchedAgencyIds.forEach((agencyId) => {
+      const bucket = paymentMap.get(agencyId) ?? []
+      bucket.push(payment)
+      paymentMap.set(agencyId, bucket)
+    })
   })
 
   const rows = agencies
@@ -138,39 +170,24 @@ export function buildOutstandingBalanceReport({
       const groupSummary = groupStatsMap.get(agency.id) ?? {
         totalGroups: 0,
         totalPax: 0,
+        totalAmount: 0,
       }
+      const totalAmount = Number(toAmount(groupSummary.totalAmount ?? 0).toFixed(2))
+      const allocatedAmount = Number((allocatedAmountByAgency.get(agency.id) ?? 0).toFixed(2))
+      const advanceBalance = Number((advanceBalanceByAgency.get(agency.id) ?? 0).toFixed(2))
+      const outstandingBalance = Number(Math.max(totalAmount - allocatedAmount, 0).toFixed(2))
+      const netBalance = Number((outstandingBalance - advanceBalance).toFixed(2))
+      const totalAmountPaid = Number((allocatedAmount + advanceBalance).toFixed(2))
 
-      const totals = agencyPayments.reduce(
-        (bucket, payment) => {
-          const paymentSummary = getPaymentSummary(
-            payment.amount.toString(),
-            payment.paymentGroups,
-            payment.status,
-          )
-
-          bucket.totalAmountPaid += Number(toAmount(payment.amount).toFixed(2))
-          bucket.totalAmount += paymentSummary.allocatedAmount
-          bucket.outstandingBalance += paymentSummary.remainingBalance
-          bucket.lastPaymentDate = bucket.lastPaymentDate
-            ? new Date(
-                Math.max(bucket.lastPaymentDate.getTime(), getEffectiveDate(payment).getTime()),
-              )
-            : getEffectiveDate(payment)
-
-          return bucket
-        },
-        {
-          totalAmount: 0,
-          totalAmountPaid: 0,
-          outstandingBalance: 0,
-          lastPaymentDate: null as Date | null,
-        },
-      )
+      const lastPaymentDate = agencyPayments.reduce<Date | null>((latestDate, payment) => {
+        const effectiveDate = getEffectiveDate(payment)
+        return latestDate && latestDate.getTime() > effectiveDate.getTime() ? latestDate : effectiveDate
+      }, null)
 
       const paymentStatus = getOutstandingStatus(
-        Number(totals.totalAmount.toFixed(2)),
-        Number(totals.totalAmountPaid.toFixed(2)),
-        Number(totals.outstandingBalance.toFixed(2)),
+        totalAmount,
+        allocatedAmount,
+        outstandingBalance,
       )
 
       return {
@@ -181,19 +198,17 @@ export function buildOutstandingBalanceReport({
         agentNumber: agency.code,
         totalGroups: groupSummary.totalGroups,
         totalPax: groupSummary.totalPax,
-        totalAmount: Number(totals.totalAmount.toFixed(2)),
-        totalAmountPaid: Number(totals.totalAmountPaid.toFixed(2)),
-        outstandingBalance: Number(totals.outstandingBalance.toFixed(2)),
+        totalAmount,
+        totalAmountPaid,
+        outstandingBalance,
+        advanceBalance,
+        netBalance,
         paymentStatus,
         paymentStatusLabel: getStatusLabel(paymentStatus),
-        lastPaymentDate: totals.lastPaymentDate?.toISOString() ?? null,
+        lastPaymentDate: lastPaymentDate?.toISOString() ?? null,
       }
     })
     .filter((row) => {
-      if (!paymentMap.has(row.agencyId)) {
-        return false
-      }
-
       if (filters.paymentStatus && row.paymentStatus !== filters.paymentStatus) {
         return false
       }

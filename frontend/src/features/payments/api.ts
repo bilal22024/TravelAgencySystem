@@ -35,8 +35,10 @@ export type PaymentEntryPayload = {
   paymentMethod: PaymentRecord['method']
   remarks?: string
   currentPaymentAmount: number
-  selectedGroups: Array<{
+  allocationMode: 'MANUAL' | 'AUTO_OLDEST'
+  allocations: Array<{
     groupId: string
+    allocatedAmount?: number
   }>
 }
 
@@ -126,7 +128,11 @@ async function createPaymentEntry(payload: PaymentEntryPayload) {
       paymentMethod: payload.paymentMethod,
       remarks: payload.remarks?.trim() || undefined,
       currentPaymentAmount: payload.currentPaymentAmount,
-      selectedGroups: payload.selectedGroups,
+      allocationMode: payload.allocationMode,
+      allocations: payload.allocations,
+      selectedGroups: payload.allocations.map((allocation) => ({
+        groupId: allocation.groupId,
+      })),
     },
   })
 

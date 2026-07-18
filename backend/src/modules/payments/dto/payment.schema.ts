@@ -47,17 +47,50 @@ export const paymentEntryGroupSelectionSchema = z.object({
   groupId: uuidSchema,
 })
 
-export const paymentEntrySchema = z.object({
-  agencyId: uuidSchema,
-  receivedByUserId: uuidSchema.optional(),
-  reference: requiredTrimmedString(40).regex(/^[A-Z0-9_-]+$/),
-  paymentDate: isoDateSchema,
-  paymentCity: requiredTrimmedString(120),
-  paymentMethod: paymentMethodSchema,
-  remarks: optionalTrimmedString(5000),
-  currentPaymentAmount: moneySchema,
-  selectedGroups: z.array(paymentEntryGroupSelectionSchema).min(1).max(100),
+export const paymentAllocationModeSchema = z.enum(['MANUAL', 'AUTO_OLDEST'])
+
+export const paymentEntryAllocationSchema = z.object({
+  groupId: uuidSchema,
+  allocatedAmount: moneySchema.optional(),
 })
+
+export const paymentEntrySchema = z
+  .object({
+    agencyId: uuidSchema,
+    receivedByUserId: uuidSchema.optional(),
+    reference: requiredTrimmedString(40).regex(/^[A-Z0-9_-]+$/),
+    paymentDate: isoDateSchema,
+    paymentCity: requiredTrimmedString(120),
+    paymentMethod: paymentMethodSchema,
+    remarks: optionalTrimmedString(5000),
+    currentPaymentAmount: moneySchema,
+    allocationMode: paymentAllocationModeSchema.default('MANUAL'),
+    allocations: z.array(paymentEntryAllocationSchema).min(1).max(100),
+    selectedGroups: z.array(paymentEntryGroupSelectionSchema).max(100).optional(),
+  })
+  .superRefine((value, context) => {
+    const selectedIds = value.allocations.map((allocation) => allocation.groupId)
+
+    if (new Set(selectedIds).size !== selectedIds.length) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['allocations'],
+        message: 'A group can only be selected once per payment.',
+      })
+    }
+
+    if (value.allocationMode === 'MANUAL') {
+      value.allocations.forEach((allocation, index) => {
+        if (allocation.allocatedAmount === undefined) {
+          context.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ['allocations', index, 'allocatedAmount'],
+            message: 'Allocated amount is required for manual allocation.',
+          })
+        }
+      })
+    }
+  })
 
 export const paymentIdParamsSchema = z.object({
   id: uuidSchema,

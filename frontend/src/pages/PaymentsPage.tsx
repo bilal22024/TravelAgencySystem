@@ -98,6 +98,7 @@ function buildReceiptPrintDocument(receipt: PaymentReceipt) {
         <tr>
           <td>${escapeHtml(group.groupNumber)}</td>
           <td>${escapeHtml(group.groupName || 'Unnamed Group')}</td>
+          <td>${escapeHtml(group.agencyName)}</td>
           <td style="text-align:right;">${group.passengers}</td>
           <td style="text-align:right;">${escapeHtml(formatCurrency(group.groupTotalAmount))}</td>
           <td style="text-align:right;">${escapeHtml(formatCurrency(group.allocatedAmount))}</td>
@@ -146,6 +147,11 @@ function buildReceiptPrintDocument(receipt: PaymentReceipt) {
         <p class="muted">${escapeHtml(receipt.agency.country)} - ${escapeHtml(receipt.agency.city)}</p>
       </div>
       <div>
+        <p class="label">Paid By</p>
+        <p class="value">${escapeHtml(receipt.paidByAgency.agencyName)}</p>
+        <p class="muted">${escapeHtml(receipt.paidByAgency.country)} - ${escapeHtml(receipt.paidByAgency.city)}</p>
+      </div>
+      <div>
         <p class="label">Agent Number</p>
         <p class="value">${escapeHtml(receipt.agency.agentNumber)}</p>
       </div>
@@ -174,6 +180,7 @@ function buildReceiptPrintDocument(receipt: PaymentReceipt) {
           <tr>
             <th>Group Number</th>
             <th>Group Name</th>
+            <th>Agency</th>
             <th>Passengers</th>
             <th>Group Total</th>
             <th>Allocated</th>
@@ -194,6 +201,10 @@ function buildReceiptPrintDocument(receipt: PaymentReceipt) {
         <div>
           <p class="label">Groups Covered</p>
           <p class="value">${receipt.groups.length}</p>
+        </div>
+        <div>
+          <p class="label">Advance Balance</p>
+          <p class="value">${escapeHtml(formatCurrency(receipt.advanceBalance))}</p>
         </div>
       </div>
     </div>
@@ -217,6 +228,8 @@ export function PaymentsPage() {
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc')
   const [page, setPage] = useState(1)
   const [selectedGroupIds, setSelectedGroupIds] = useState<string[]>([])
+  const [allocationMode, setAllocationMode] = useState<'MANUAL' | 'AUTO_OLDEST'>('MANUAL')
+  const [allocationDrafts, setAllocationDrafts] = useState<Record<string, string>>({})
   const [entryForm, setEntryForm] = useState({
     paymentDate: getTodayInputValue(),
     receivedByUserId: '',
@@ -397,6 +410,8 @@ export function PaymentsPage() {
       paymentCity: normalizeAgencyLocation(selectedAgency.city),
     }))
     setSelectedGroupIds([])
+    setAllocationDrafts({})
+    setAllocationMode('MANUAL')
     setEntryFeedback(null)
     setReceiptPreview(null)
     setSelectedPaymentId(null)
@@ -440,12 +455,31 @@ export function PaymentsPage() {
   useEffect(() => {
     const availableGroupIds = new Set(groups.map((group) => group.groupId))
     setSelectedGroupIds((current) => current.filter((groupId) => availableGroupIds.has(groupId)))
+    setAllocationDrafts((current) =>
+      Object.fromEntries(
+        Object.entries(current).filter(([groupId]) => availableGroupIds.has(groupId)),
+      ),
+    )
   }, [groups])
 
   const selectedGroups = useMemo(
     () => groups.filter((group) => selectedGroupIds.includes(group.groupId)),
     [groups, selectedGroupIds],
   )
+
+  useEffect(() => {
+    setAllocationDrafts((current) => {
+      const nextEntries = selectedGroups.map((group) => {
+        const existingValue = current[group.groupId]
+        return [
+          group.groupId,
+          existingValue ?? (allocationMode === 'MANUAL' ? group.remainingAmount.toFixed(2) : ''),
+        ] as const
+      })
+
+      return Object.fromEntries(nextEntries)
+    })
+  }, [allocationMode, selectedGroups])
 
   const selectedGroupsSummary = useMemo(() => {
     const selectedGroupsTotal = Number(
@@ -470,19 +504,93 @@ export function PaymentsPage() {
     entryForm.currentPaymentAmount.trim() !== '' &&
     Number.isFinite(currentPaymentAmount) &&
     currentPaymentAmount > 0
-  const isOverPayment =
-    currentPaymentAmountIsValid && currentPaymentAmount > selectedGroupsSummary.remainingBalance
+  const manualAllocationRows = useMemo(
+    () =>
+      selectedGroups.map((group) => {
+        const rawAllocatedAmount = allocationDrafts[group.groupId] ?? ''
+        const allocatedAmount = Number(rawAllocatedAmount || 0)
+
+        return {
+          ...group,
+          rawAllocatedAmount,
+          allocatedAmount,
+        }
+      }),
+    [allocationDrafts, selectedGroups],
+  )
+  const manualAllocationValidationMessage = useMemo(() => {
+    if (allocationMode !== 'MANUAL') {
+      return null
+    }
+
+    for (const group of manualAllocationRows) {
+      if (group.rawAllocatedAmount.trim() === '') {
+        return `Allocated amount is required for ${group.groupNumber}.`
+      }
+
+      if (!Number.isFinite(group.allocatedAmount) || group.allocatedAmount <= 0) {
+        return `Allocated amount must be greater than zero for ${group.groupNumber}.`
+      }
+
+      if (group.allocatedAmount > group.remainingAmount) {
+        return `Allocated amount cannot exceed the remaining balance for ${group.groupNumber}.`
+      }
+    }
+
+    return null
+  }, [allocationMode, manualAllocationRows])
+  const manualAllocatedTotal = useMemo(
+    () =>
+      Number(
+        manualAllocationRows
+          .reduce((total, group) => total + (Number.isFinite(group.allocatedAmount) ? group.allocatedAmount : 0), 0)
+          .toFixed(2),
+      ),
+    [manualAllocationRows],
+  )
+  const projectedAllocatedAmount = useMemo(() => {
+    if (!currentPaymentAmountIsValid) {
+      return 0
+    }
+
+    if (allocationMode === 'AUTO_OLDEST') {
+      const oldestFirstGroups = [...selectedGroups].sort((left, right) =>
+        left.createdAt.localeCompare(right.createdAt),
+      )
+      let remainingPool = currentPaymentAmount
+
+      return Number(
+        oldestFirstGroups
+          .reduce((total, group) => {
+            if (remainingPool <= 0) {
+              return total
+            }
+
+            const allocation = Math.min(group.remainingAmount, remainingPool)
+            remainingPool = Number((remainingPool - allocation).toFixed(2))
+            return total + allocation
+          }, 0)
+          .toFixed(2),
+      )
+    }
+
+    return manualAllocatedTotal
+  }, [allocationMode, currentPaymentAmount, currentPaymentAmountIsValid, manualAllocatedTotal, selectedGroups])
   const remainingAfterCurrentPayment = Number(
-    Math.max(selectedGroupsSummary.remainingBalance - (currentPaymentAmountIsValid ? currentPaymentAmount : 0), 0).toFixed(2),
+    Math.max(selectedGroupsSummary.remainingBalance - projectedAllocatedAmount, 0).toFixed(2),
+  )
+  const advanceBalancePreview = Number(
+    Math.max((currentPaymentAmountIsValid ? currentPaymentAmount : 0) - projectedAllocatedAmount, 0).toFixed(2),
   )
   const canSubmitPayment =
     Boolean(selectedAgencyId) &&
     selectedGroupIds.length > 0 &&
     currentPaymentAmountIsValid &&
-    !isOverPayment &&
     entryForm.paymentDate.trim().length > 0 &&
     entryForm.paymentCity.trim().length > 0 &&
     entryForm.reference.trim().length > 0 &&
+    !manualAllocationValidationMessage &&
+    (allocationMode === 'AUTO_OLDEST' || manualAllocatedTotal <= currentPaymentAmount) &&
     !createPaymentEntryMutation.isPending
 
   if ((agenciesQuery.isPending && !agenciesQuery.data) || (usersQuery.isPending && !usersQuery.data)) {
@@ -546,8 +654,8 @@ export function PaymentsPage() {
     <div className="space-y-6">
       <PageHeader
         eyebrow="Professional payment management"
-        title="Record payments against unpaid and partially paid groups"
-        description="This workflow keeps the selection order finance-friendly, auto-allocates the current payment across the selected groups, rejects overpayments, and refreshes reports, ledgers, outstanding balances, dashboard data, and payment history."
+        title="Record direct payments, parent-paid allocations, and advance balances"
+        description="This workflow supports manual allocation, oldest-first auto allocation, parent-to-branch coverage, and credit-balance creation while refreshing reports, ledgers, outstanding balances, dashboard data, and payment history."
       />
 
       <Panel
@@ -652,7 +760,9 @@ export function PaymentsPage() {
               )}
             </p>
             <p className="mt-2 text-sm text-slate-200">
-              Only unpaid and partially paid groups appear in the payment selection grid.
+              {entryContext && entryContext.allowedAgencyIds.length > 1
+                ? `This payer can allocate across ${formatNumber(entryContext.allowedAgencyIds.length)} connected agencies.`
+                : 'Only unpaid and partially paid groups appear in the payment selection grid.'}
             </p>
           </div>
         </div>
@@ -661,7 +771,7 @@ export function PaymentsPage() {
       <div className="grid gap-6 xl:grid-cols-[1.35fr,0.95fr]">
         <Panel
           title="Outstanding Groups"
-          description="Select one or more groups to build the current payment. Remaining balances are calculated from the live allocation history."
+          description="Select one or more groups to build the payment scope. Parent agencies can cover their own and connected branch balances from the same screen."
           action={
             groups.length > 0 ? (
               <div className="flex flex-wrap gap-2">
@@ -711,6 +821,7 @@ export function PaymentsPage() {
                     <tr className="text-left text-xs uppercase tracking-[0.18em] text-slate-400">
                       <th className="px-3 py-3">Select</th>
                       <th className="px-3 py-3">Group Number</th>
+                      <th className="px-3 py-3">Agency</th>
                       <th className="px-3 py-3">Passengers</th>
                       <th className="px-3 py-3">Total Amount</th>
                       <th className="px-3 py-3">Paid</th>
@@ -750,6 +861,9 @@ export function PaymentsPage() {
                             </p>
                           </td>
                           <td className="px-3 py-3 text-slate-200">
+                            {group.agencyName} ({group.agencyCode})
+                          </td>
+                          <td className="px-3 py-3 text-slate-200">
                             {formatNumber(group.passengers)}
                           </td>
                           <td className="px-3 py-3 text-slate-200">
@@ -777,7 +891,7 @@ export function PaymentsPage() {
         <div className="space-y-6">
           <Panel
             title="Payment Information"
-            description="The current payment is validated against the selected groups before it is saved and auto-allocated."
+            description="Choose manual or oldest-first allocation, validate the payment against current balances, and allow any unallocated remainder to become advance balance."
           >
             <div className="space-y-4">
               {entryFeedback ? (
@@ -925,11 +1039,101 @@ export function PaymentsPage() {
                 />
               </label>
 
+              <div className="grid gap-4 md:grid-cols-2">
+                <label className="block">
+                  <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.22em] text-slate-400">
+                    Allocation Mode
+                  </span>
+                  <select
+                    className="w-full rounded-2xl border border-white/10 bg-[rgba(7,15,27,0.55)] px-4 py-3 text-sm text-white outline-none transition focus:border-cyan-300/50"
+                    value={allocationMode}
+                    onChange={(event) =>
+                      setAllocationMode(event.target.value as 'MANUAL' | 'AUTO_OLDEST')
+                    }
+                  >
+                    <option value="MANUAL">Manual allocation</option>
+                    <option value="AUTO_OLDEST">Oldest outstanding first</option>
+                  </select>
+                </label>
+
+                <div className="rounded-[22px] border border-white/10 bg-[rgba(7,15,27,0.45)] px-4 py-4">
+                  <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
+                    Allocation Summary
+                  </p>
+                  <p className="mt-3 text-sm font-semibold text-white">
+                    {allocationMode === 'MANUAL'
+                      ? 'You control each selected group amount before saving.'
+                      : 'The payment is distributed automatically by oldest group first.'}
+                  </p>
+                  <p className="mt-2 text-sm text-slate-300">
+                    Any amount left after allocation becomes advance balance for the paying agency.
+                  </p>
+                </div>
+              </div>
+
+              {selectedGroups.length > 0 ? (
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-400">
+                      Selected Group Allocations
+                    </p>
+                    <p className="text-xs uppercase tracking-[0.18em] text-slate-500">
+                      {allocationMode === 'MANUAL'
+                        ? 'Edit each amount before saving.'
+                        : 'Preview only in auto mode.'}
+                    </p>
+                  </div>
+                  {manualAllocationRows.map((group) => (
+                    <div
+                      key={group.groupId}
+                      className="grid gap-3 rounded-[22px] border border-white/10 bg-white/[0.04] px-4 py-4 md:grid-cols-[1.4fr,0.7fr,0.7fr]"
+                    >
+                      <div>
+                        <p className="text-sm font-semibold text-white">
+                          {group.groupNumber} • {group.agencyName}
+                        </p>
+                        <p className="mt-1 text-sm text-slate-300">
+                          {group.groupName || 'Unnamed Group'} • Remaining {formatCurrency(group.remainingAmount)}
+                        </p>
+                      </div>
+                      <div className="rounded-[18px] border border-white/10 bg-[rgba(7,15,27,0.35)] px-3 py-3">
+                        <p className="text-xs uppercase tracking-[0.18em] text-slate-400">Passengers</p>
+                        <p className="mt-2 text-sm font-semibold text-white">{formatNumber(group.passengers)}</p>
+                      </div>
+                      <label className="block">
+                        <span className="mb-2 block text-xs uppercase tracking-[0.18em] text-slate-400">
+                          Allocated Amount
+                        </span>
+                        <input
+                          className="w-full rounded-2xl border border-white/10 bg-[rgba(7,15,27,0.55)] px-4 py-3 text-sm text-white outline-none transition focus:border-cyan-300/50 disabled:cursor-not-allowed disabled:opacity-60"
+                          min="0"
+                          step="0.01"
+                          type="number"
+                          disabled={allocationMode !== 'MANUAL'}
+                          value={
+                            allocationMode === 'MANUAL'
+                              ? group.rawAllocatedAmount
+                              : Math.min(group.remainingAmount, currentPaymentAmount || group.remainingAmount)
+                          }
+                          onChange={(event) =>
+                            setAllocationDrafts((current) => ({
+                              ...current,
+                              [group.groupId]: event.target.value,
+                            }))
+                          }
+                        />
+                      </label>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+
               <div className="grid gap-4 sm:grid-cols-2">
                 {[
                   ['Selected Groups Total', selectedGroupsSummary.selectedGroupsTotal],
                   ['Already Paid', selectedGroupsSummary.alreadyPaid],
-                  ['Current Payment', currentPaymentAmountIsValid ? currentPaymentAmount : 0],
+                  ['Allocated Now', projectedAllocatedAmount],
+                  ['Advance Balance', advanceBalancePreview],
                   ['Remaining Balance', remainingAfterCurrentPayment],
                 ].map(([label, value]) => (
                   <div
@@ -950,9 +1154,15 @@ export function PaymentsPage() {
                 <p className="text-sm text-rose-200">Current payment must be greater than zero.</p>
               ) : null}
 
-              {isOverPayment ? (
+              {manualAllocationValidationMessage ? (
                 <p className="text-sm text-rose-200">
-                  Current payment cannot exceed the selected groups&apos; remaining balance.
+                  {manualAllocationValidationMessage}
+                </p>
+              ) : null}
+
+              {allocationMode === 'MANUAL' && manualAllocatedTotal > currentPaymentAmount ? (
+                <p className="text-sm text-rose-200">
+                  Manual allocation total cannot exceed the current payment amount.
                 </p>
               ) : null}
 
@@ -1006,15 +1216,6 @@ export function PaymentsPage() {
                     return
                   }
 
-                  if (isOverPayment) {
-                    setEntryFeedback({
-                      type: 'error',
-                      title: 'Overpayment rejected',
-                      description: 'Current payment cannot be greater than the selected remaining balance.',
-                    })
-                    return
-                  }
-
                   setEntryFeedback(null)
 
                   createPaymentEntryMutation.mutate(
@@ -1027,17 +1228,26 @@ export function PaymentsPage() {
                       paymentMethod: entryForm.paymentMethod,
                       remarks: entryForm.remarks,
                       currentPaymentAmount,
-                      selectedGroups: selectedGroupIds.map((groupId) => ({ groupId })),
+                      allocationMode,
+                      allocations: selectedGroups.map((group) => ({
+                        groupId: group.groupId,
+                        ...(allocationMode === 'MANUAL'
+                          ? {
+                              allocatedAmount: Number(allocationDrafts[group.groupId] || 0),
+                            }
+                          : {}),
+                      })),
                     },
                     {
                       onSuccess: (result) => {
                         setSelectedGroupIds([])
+                        setAllocationDrafts({})
                         setSelectedPaymentId(result.payment.id)
                         setReceiptPreview(result.receipt)
                         setEntryFeedback({
                           type: 'success',
                           title: `Receipt ${result.receipt.receiptNumber} generated successfully.`,
-                          description: `${result.receipt.groups.length} groups were included. Current Payment: ${formatCurrency(result.summary.currentPayment)}. Remaining Balance: ${formatCurrency(result.summary.remainingBalance)}.`,
+                          description: `${result.receipt.groups.length} groups were included. Current Payment: ${formatCurrency(result.summary.currentPayment)}. Allocated: ${formatCurrency(result.summary.allocatedAmount)}. Advance: ${formatCurrency(result.summary.advanceBalanceCreated)}.`,
                         })
                         setEntryForm((current) => ({
                           ...current,
@@ -1138,9 +1348,11 @@ export function PaymentsPage() {
                   </div>
                   <div className="rounded-[22px] border border-white/10 bg-[rgba(7,15,27,0.45)] px-4 py-4">
                     <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
-                      Received By
+                      Paid By
                     </p>
-                    <p className="mt-3 text-sm font-semibold text-white">{activeReceipt.receivedBy}</p>
+                    <p className="mt-3 text-sm font-semibold text-white">
+                      {activeReceipt.paidByAgency.agencyName}
+                    </p>
                     <p className="mt-1 text-sm text-slate-300">{activeReceipt.paymentCity}</p>
                   </div>
                 </div>
@@ -1150,6 +1362,8 @@ export function PaymentsPage() {
                     ['Reference', activeReceipt.referenceNumber],
                     ['Current Payment', formatCurrency(activeReceipt.currentPaymentAmount)],
                     ['Allocated Total', formatCurrency(activeReceipt.totalAllocatedAmount)],
+                    ['Advance Balance', formatCurrency(activeReceipt.advanceBalance)],
+                    ['Received By', activeReceipt.receivedBy],
                   ].map(([label, value]) => (
                     <div
                       key={label}
@@ -1173,7 +1387,7 @@ export function PaymentsPage() {
                         <div>
                           <p className="text-sm font-semibold text-white">{group.groupNumber}</p>
                           <p className="mt-1 text-sm text-slate-300">
-                            {group.groupName || 'Unnamed Group'} • {formatNumber(group.passengers)} pax
+                            {group.groupName || 'Unnamed Group'} • {group.agencyName} • {formatNumber(group.passengers)} pax
                           </p>
                         </div>
                         <div className="text-right">
@@ -1341,14 +1555,19 @@ export function PaymentsPage() {
                       {formatPaymentMethodLabel(payment.method)}
                     </p>
                     <p className="mt-2 text-xs uppercase tracking-[0.18em] text-slate-400">
-                      {payment.agency?.name ?? entryContext?.agency.agencyName ?? 'Agency scoped'} •{' '}
+                      {payment.paidByAgency?.name ?? payment.agency?.name ?? entryContext?.agency.agencyName ?? 'Agency scoped'} •{' '}
                       {payment.paymentCity ?? 'Unspecified'} • Updated{' '}
                       {formatRelativeStatusDate(payment.updatedAt)}
                     </p>
                     <p className="mt-2 text-xs uppercase tracking-[0.18em] text-emerald-200">
-                      Allocated {formatCurrency(payment.allocatedAmount, payment.currency)} • Remaining{' '}
-                      {formatCurrency(payment.remainingBalance, payment.currency)}
+                      Allocated {formatCurrency(payment.allocatedAmount, payment.currency)} • Advance{' '}
+                      {formatCurrency(payment.advanceBalance, payment.currency)}
                     </p>
+                    {payment.allocatedAgencies && payment.allocatedAgencies.length > 0 ? (
+                      <p className="mt-2 text-xs uppercase tracking-[0.18em] text-slate-500">
+                        Allocated to {payment.allocatedAgencies.map((agency) => agency.code).join(', ')}
+                      </p>
+                    ) : null}
                   </div>
 
                   <div className="space-y-2 text-right">

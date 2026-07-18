@@ -4,6 +4,14 @@ type AgencyLike = {
   code: string
   city: string | null
   country: string | null
+  openingBalance: number | string | { toString(): string }
+}
+
+type GroupLike = {
+  id: string
+  code: string
+  totalAmount: number | string | { toString(): string } | null
+  createdAt: Date
 }
 
 type PaymentGroupLike = {
@@ -12,7 +20,14 @@ type PaymentGroupLike = {
   notes: string | null
   createdAt: Date
   group: {
+    id: string
+    agencyId: string
     code: string
+    agency: {
+      id: string
+      name: string
+      code: string
+    }
   }
 }
 
@@ -24,11 +39,18 @@ type PaymentLike = {
   description: string | null
   paidAt: Date | null
   createdAt: Date
+  agencyId: string
+  agency: {
+    id: string
+    name: string
+    code: string
+  }
   paymentGroups: PaymentGroupLike[]
 }
 
 type AgencyLedgerInput = {
   agency: AgencyLike
+  groups: GroupLike[]
   payments: PaymentLike[]
   filters: {
     dateFrom?: Date
@@ -38,7 +60,7 @@ type AgencyLedgerInput = {
 
 type LedgerEntryDraft = {
   id: string
-  type: 'payment' | 'adjustment'
+  type: 'group_charge' | 'payment' | 'payment_allocation' | 'adjustment'
   date: Date
   description: string
   referenceNumber: string
@@ -48,7 +70,13 @@ type LedgerEntryDraft = {
 
 type LedgerEntry = {
   id: string
-  type: 'opening_balance' | 'payment' | 'adjustment' | 'outstanding_balance'
+  type:
+    | 'opening_balance'
+    | 'group_charge'
+    | 'payment'
+    | 'payment_allocation'
+    | 'adjustment'
+    | 'outstanding_balance'
   date: string | null
   description: string
   referenceNumber: string
@@ -83,7 +111,7 @@ function matchesDateRange(date: Date, dateFrom?: Date, dateTo?: Date) {
 }
 
 function getEntryBalance(entry: Pick<LedgerEntryDraft, 'credit' | 'debit'>) {
-  return Number((entry.credit - entry.debit).toFixed(2))
+  return Number((entry.debit - entry.credit).toFixed(2))
 }
 
 function compareLedgerEntries(left: LedgerEntryDraft, right: LedgerEntryDraft) {
@@ -94,39 +122,72 @@ function compareLedgerEntries(left: LedgerEntryDraft, right: LedgerEntryDraft) {
   }
 
   const typeOrder = {
-    payment: 0,
-    adjustment: 1,
+    group_charge: 0,
+    payment: 1,
+    payment_allocation: 2,
+    adjustment: 3,
   } satisfies Record<LedgerEntryDraft['type'], number>
 
   return typeOrder[left.type] - typeOrder[right.type]
 }
 
-function buildLedgerEntryDrafts(payments: PaymentLike[]) {
+function buildLedgerEntryDrafts(agency: AgencyLike, groups: GroupLike[], payments: PaymentLike[]) {
   const entries: LedgerEntryDraft[] = []
+
+  groups.forEach((group) => {
+    entries.push({
+      id: `group-charge-${group.id}`,
+      type: 'group_charge',
+      date: group.createdAt,
+      description: `Group Charge - ${group.code}`,
+      referenceNumber: group.code,
+      debit: Number(toAmount(group.totalAmount ?? 0).toFixed(2)),
+      credit: 0,
+    })
+  })
 
   payments.forEach((payment) => {
     const paymentDate = payment.paidAt ?? payment.createdAt
-    entries.push({
-      id: `payment-${payment.id}`,
-      type: 'payment',
-      date: paymentDate,
-      description: payment.description?.trim() || 'Payment received',
-      referenceNumber: payment.reference,
-      debit: 0,
-      credit: Number(toAmount(payment.amount).toFixed(2)),
-    })
+    const isOwnPayment = payment.agencyId === agency.id
+
+    if (isOwnPayment) {
+      entries.push({
+        id: `payment-${payment.id}`,
+        type: 'payment',
+        date: paymentDate,
+        description: payment.description?.trim() || 'Payment received',
+        referenceNumber: payment.reference,
+        debit: 0,
+        credit: Number(toAmount(payment.amount).toFixed(2)),
+      })
+    }
 
     payment.paymentGroups.forEach((paymentGroup) => {
+      const isIncomingAllocation = payment.agencyId !== agency.id
+      const belongsToCurrentAgency = paymentGroup.group.agencyId === agency.id
+
+      if (isOwnPayment && belongsToCurrentAgency) {
+        return
+      }
+
+      if (!isOwnPayment && !belongsToCurrentAgency) {
+        return
+      }
+
       entries.push({
         id: `adjustment-${paymentGroup.id}`,
-        type: 'adjustment',
+        type: isIncomingAllocation ? 'payment_allocation' : 'adjustment',
         date: paymentGroup.createdAt,
-        description: paymentGroup.notes?.trim()
-          ? `Adjustment - ${paymentGroup.group.code} (${paymentGroup.notes.trim()})`
-          : `Adjustment - ${paymentGroup.group.code}`,
+        description: isIncomingAllocation
+          ? paymentGroup.notes?.trim()
+            ? `Payment Allocation - ${payment.agency.code} to ${paymentGroup.group.code} (${paymentGroup.notes.trim()})`
+            : `Payment Allocation - ${payment.agency.code} to ${paymentGroup.group.code}`
+          : paymentGroup.notes?.trim()
+            ? `Advance Balance Used - ${paymentGroup.group.agency.code} / ${paymentGroup.group.code} (${paymentGroup.notes.trim()})`
+            : `Advance Balance Used - ${paymentGroup.group.agency.code} / ${paymentGroup.group.code}`,
         referenceNumber: payment.reference,
-        debit: Number(toAmount(paymentGroup.allocatedAmount).toFixed(2)),
-        credit: 0,
+        debit: isIncomingAllocation ? 0 : Number(toAmount(paymentGroup.allocatedAmount).toFixed(2)),
+        credit: isIncomingAllocation ? Number(toAmount(paymentGroup.allocatedAmount).toFixed(2)) : 0,
       })
     })
   })
@@ -136,12 +197,17 @@ function buildLedgerEntryDrafts(payments: PaymentLike[]) {
 
 export type AgencyLedger = ReturnType<typeof buildAgencyLedger>
 
-export function buildAgencyLedger({ agency, payments, filters }: AgencyLedgerInput) {
-  const ledgerDrafts = buildLedgerEntryDrafts(payments)
+export function buildAgencyLedger({ agency, groups, payments, filters }: AgencyLedgerInput) {
+  const ledgerDrafts = buildLedgerEntryDrafts(agency, groups, payments)
 
-  const openingBalance = ledgerDrafts
+  const openingBalance = Number(
+    (
+      toAmount(agency.openingBalance) +
+      ledgerDrafts
     .filter((entry) => isBeforeDate(entry.date, filters.dateFrom))
     .reduce((total, entry) => total + getEntryBalance(entry), 0)
+    ).toFixed(2),
+  )
 
   const filteredDrafts = ledgerDrafts.filter((entry) =>
     matchesDateRange(entry.date, filters.dateFrom, filters.dateTo),
@@ -183,7 +249,7 @@ export function buildAgencyLedger({ agency, payments, filters }: AgencyLedgerInp
     id: 'outstanding-balance',
     type: 'outstanding_balance' as const,
     date: filters.dateTo?.toISOString() ?? null,
-    description: 'Outstanding Balance',
+    description: 'Closing Net Balance',
     referenceNumber: '-',
     debit: 0,
     credit: 0,
@@ -211,7 +277,9 @@ export function buildAgencyLedger({ agency, payments, filters }: AgencyLedgerInp
       openingBalance: Number(openingBalance.toFixed(2)),
       totalDebits: Number(totalDebits.toFixed(2)),
       totalCredits: Number(totalCredits.toFixed(2)),
-      outstandingBalance: Number(runningBalance.toFixed(2)),
+      outstandingBalance: Number(Math.max(runningBalance, 0).toFixed(2)),
+      advanceBalance: Number(Math.max(-runningBalance, 0).toFixed(2)),
+      netBalance: Number(runningBalance.toFixed(2)),
     },
     entries,
   }

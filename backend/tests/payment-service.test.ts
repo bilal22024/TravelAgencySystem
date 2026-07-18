@@ -74,6 +74,11 @@ describe('payment business logic services', () => {
 
     prismaMock.group.findUnique.mockResolvedValue({
       agencyId: 'agency-1',
+      agency: {
+        parentAgencyId: null,
+      },
+      totalAmount: 100,
+      paymentGroups: [{ id: 'alloc-1', allocatedAmount: 40 }],
     })
 
     prismaMock.paymentGroup.create.mockResolvedValue({

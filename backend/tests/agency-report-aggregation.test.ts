@@ -16,11 +16,13 @@ describe('agency report aggregation', () => {
           id: 'group-1',
           code: 'ATL-G001',
           travelerCount: 20,
+          totalAmount: 400,
         },
         {
           id: 'group-2',
           code: 'ATL-G002',
           travelerCount: 10,
+          totalAmount: 600,
         },
       ],
       payments: [
@@ -97,13 +99,16 @@ describe('agency report aggregation', () => {
     expect(report.businessSummary.totalPassengers).toBe(30)
     expect(report.businessSummary.totalAmount).toBe(1000)
     expect(report.businessSummary.totalAmountPaid).toBe(1600)
-    expect(report.businessSummary.remainingBalance).toBe(600)
+    expect(report.businessSummary.remainingBalance).toBe(0)
+    expect(report.businessSummary.advanceBalance).toBe(600)
+    expect(report.businessSummary.netBalance).toBe(-600)
     expect(report.businessSummary.pricePerPax).toBeCloseTo(33.33, 2)
-    expect(report.calculations.totalRevenue).toBe(1600)
+    expect(report.calculations.totalRevenue).toBe(1000)
     expect(report.calculations.totalPaid).toBe(1000)
     expect(report.groupDetails[0]?.groupAmount).toBe(400)
     expect(report.groupDetails[1]?.paymentStatus).toBe('ALLOCATED')
     expect(report.paymentHistory[0]?.receivedBy).toBe('Unassigned')
     expect(report.paymentHistory[1]?.paymentStatus).toBe('PARTIALLY_ALLOCATED')
+    expect(report.paymentHistory[1]?.advanceBalance).toBe(600)
   })
 })

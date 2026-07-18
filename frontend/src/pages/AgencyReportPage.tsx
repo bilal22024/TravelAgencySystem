@@ -313,9 +313,9 @@ export function AgencyReportPage() {
             detail: 'Total payment value captured by the filtered payment history.',
           },
           {
-            label: 'Remaining balance',
-            value: formatCurrency(report.businessSummary.remainingBalance),
-            detail: 'Outstanding amount based on live payment allocation calculations.',
+            label: 'Net balance',
+            value: formatCurrency(report.businessSummary.netBalance),
+            detail: 'Outstanding amount after available advance balance is deducted.',
           },
         ].map((metric) => (
           <div
@@ -335,7 +335,7 @@ export function AgencyReportPage() {
         title="Business Summary"
         description="Agency-level totals derived from the current group and payment filters."
       >
-        <div className="grid gap-4 md:grid-cols-3 xl:grid-cols-6">
+        <div className="grid gap-4 md:grid-cols-3 xl:grid-cols-8">
           {[
             ['Total Groups', formatNumber(report.businessSummary.totalGroups)],
             ['Total Passengers', formatNumber(report.businessSummary.totalPassengers)],
@@ -343,6 +343,8 @@ export function AgencyReportPage() {
             ['Total Amount', formatCurrency(report.businessSummary.totalAmount)],
             ['Total Amount Paid', formatCurrency(report.businessSummary.totalAmountPaid)],
             ['Remaining Balance', formatCurrency(report.businessSummary.remainingBalance)],
+            ['Advance Balance', formatCurrency(report.businessSummary.advanceBalance)],
+            ['Net Balance', formatCurrency(report.businessSummary.netBalance)],
           ].map(([label, value]) => (
             <div
               key={label}
@@ -417,6 +419,8 @@ export function AgencyReportPage() {
               ['Total Revenue', report.calculations.totalRevenue],
               ['Total Paid', report.calculations.totalPaid],
               ['Outstanding Balance', report.calculations.outstandingBalance],
+              ['Advance Balance', report.businessSummary.advanceBalance],
+              ['Net Balance', report.businessSummary.netBalance],
             ].map(([label, value]) => (
               <div
                 key={label}
@@ -466,16 +470,16 @@ export function AgencyReportPage() {
                       {payment.paymentMethod.replace(/_/g, ' ')}
                     </p>
                     <p className="mt-2 text-xs uppercase tracking-[0.18em] text-slate-400">
-                      {payment.reference} • {payment.remarks}
+                      {payment.reference} • Paid by {payment.paidByAgencyCode} • {payment.remarks}
                     </p>
                   </div>
                   <div className="flex items-center gap-4">
                     <div className="text-right">
                       <p className="text-sm font-semibold text-white">
-                        {formatCurrency(payment.remainingBalance)}
+                        {formatCurrency(payment.advanceBalance)}
                       </p>
                       <p className="mt-1 text-xs uppercase tracking-[0.18em] text-slate-400">
-                        Remaining balance
+                        Advance balance
                       </p>
                     </div>
                     <StatusBadge

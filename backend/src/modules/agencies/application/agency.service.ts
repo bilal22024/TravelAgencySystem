@@ -222,7 +222,7 @@ async function ensureParentAgency(parentAgencyId: string | undefined, agencyIdTo
 }
 
 async function buildAgencySummary(agencyIds: string[], includeBranches: boolean) {
-  const [groupAggregate, paymentAggregate] = await Promise.all([
+  const [groupAggregate, groups, payments] = await Promise.all([
     prisma.group.aggregate({
       where: {
         agencyId: {
@@ -237,14 +237,43 @@ async function buildAgencySummary(agencyIds: string[], includeBranches: boolean)
         totalAmount: true,
       },
     }),
-    prisma.payment.aggregate({
+    prisma.group.findMany({
       where: {
         agencyId: {
           in: agencyIds,
         },
       },
-      _sum: {
+      select: {
+        id: true,
+        agencyId: true,
+        totalAmount: true,
+        paymentGroups: {
+          select: {
+            allocatedAmount: true,
+            payment: {
+              select: {
+                agencyId: true,
+              },
+            },
+          },
+        },
+      },
+    }),
+    prisma.payment.findMany({
+      where: {
+        agencyId: {
+          in: agencyIds,
+        },
+      },
+      select: {
+        id: true,
+        agencyId: true,
         amount: true,
+        paymentGroups: {
+          select: {
+            allocatedAmount: true,
+          },
+        },
       },
     }),
   ])
@@ -252,7 +281,30 @@ async function buildAgencySummary(agencyIds: string[], includeBranches: boolean)
   const totalGroups = groupAggregate._count.id
   const totalPax = Number(groupAggregate._sum.travelerCount ?? 0)
   const totalGroupAmount = roundAmount(groupAggregate._sum.totalAmount)
-  const totalPaymentsReceived = roundAmount(paymentAggregate._sum.amount)
+  const totalAllocatedToScope = roundAmount(
+    groups.reduce((total, group) => {
+      return (
+        total +
+        group.paymentGroups.reduce((groupTotal, paymentGroup) => {
+          return groupTotal + Number(paymentGroup.allocatedAmount)
+        }, 0)
+      )
+    }, 0),
+  )
+  const advanceBalance = roundAmount(
+    payments.reduce((total, payment) => {
+      const allocatedAmount = payment.paymentGroups.reduce((paymentTotal, paymentGroup) => {
+        return paymentTotal + Number(paymentGroup.allocatedAmount)
+      }, 0)
+
+      return total + Math.max(Number(payment.amount) - allocatedAmount, 0)
+    }, 0),
+  )
+  const totalPaymentsReceived = roundAmount(
+    payments.reduce((total, payment) => total + Number(payment.amount), 0),
+  )
+  const outstandingBalance = roundAmount(Math.max(totalGroupAmount - totalAllocatedToScope, 0))
+  const netBalance = roundAmount(outstandingBalance - advanceBalance)
 
   return {
     totalBranches: Math.max(agencyIds.length - 1, 0),
@@ -260,7 +312,9 @@ async function buildAgencySummary(agencyIds: string[], includeBranches: boolean)
     totalPax,
     totalGroupAmount,
     totalPaymentsReceived,
-    outstandingBalance: roundAmount(Math.max(totalGroupAmount - totalPaymentsReceived, 0)),
+    outstandingBalance,
+    advanceBalance,
+    netBalance,
     scopeAgencyIds: agencyIds,
     includeBranches,
   }

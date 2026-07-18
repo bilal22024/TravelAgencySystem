@@ -16,6 +16,7 @@ type GroupLike = {
   id: string
   code: string
   travelerCount: number
+  totalAmount: number | string | { toString(): string } | null
 }
 
 type PaymentGroupLike = {
@@ -124,8 +125,6 @@ function deriveGroupPaymentStatus(statuses: PaymentStatus[]) {
 export type AgencyReport = ReturnType<typeof buildAgencyReport>
 
 export function buildAgencyReport({ agency, groups, payments, filters }: AgencyReportInput) {
-  const hasPaymentFilters = Boolean(filters.dateFrom || filters.dateTo || filters.paymentStatus)
-
   const paymentSnapshots = payments
     .filter((payment) => matchesDateRange(payment, filters.dateFrom, filters.dateTo))
     .map((payment) => {
@@ -144,10 +143,13 @@ export function buildAgencyReport({ agency, groups, payments, filters }: AgencyR
         paymentStatus: summary.status,
         paymentDate: payment.paidAt?.toISOString() ?? payment.createdAt.toISOString(),
         paymentCity: payment.paymentCity ?? payment.agency.city ?? 'Unspecified',
+        paidByAgencyName: payment.agency.name,
+        paidByAgencyCode: payment.agency.code,
         receivedBy: formatReceivedBy(payment.receivedBy),
         remarks: payment.description ?? '-',
         allocatedAmount: summary.allocatedAmount,
         remainingBalance: summary.remainingBalance,
+        advanceBalance: Number(summary.remainingBalance.toFixed(2)),
         paymentGroups: payment.paymentGroups.map((paymentGroup) => ({
           groupId: paymentGroup.group.id,
           groupNumber: paymentGroup.group.code,
@@ -156,6 +158,7 @@ export function buildAgencyReport({ agency, groups, payments, filters }: AgencyR
         })),
       }
     })
+    .filter((payment) => (filters.paymentStatus ? payment.paymentStatus === filters.paymentStatus : true))
     .sort((left, right) => {
       return new Date(right.paymentDate).getTime() - new Date(left.paymentDate).getTime()
     })
@@ -176,16 +179,10 @@ export function buildAgencyReport({ agency, groups, payments, filters }: AgencyR
   })
 
   const groupDetails = groups
-    .filter((group) => {
-      if (!hasPaymentFilters) {
-        return true
-      }
-
-      return groupAggregates.has(group.id)
-    })
     .map((group) => {
       const aggregate = groupAggregates.get(group.id)
-      const groupAmount = Number((aggregate?.groupAmount ?? 0).toFixed(2))
+      const groupAmount = Number(toAmount(group.totalAmount ?? 0).toFixed(2))
+      const allocatedAmount = Number((aggregate?.groupAmount ?? 0).toFixed(2))
       const pricePerPax =
         group.travelerCount > 0 ? Number((groupAmount / group.travelerCount).toFixed(2)) : 0
 
@@ -195,18 +192,25 @@ export function buildAgencyReport({ agency, groups, payments, filters }: AgencyR
         numberOfPax: group.travelerCount,
         pricePerPax,
         groupAmount,
-        paymentStatus: deriveGroupPaymentStatus(aggregate?.statuses ?? []),
+        paymentStatus: deriveGroupPaymentStatus(
+          allocatedAmount <= 0
+            ? []
+            : allocatedAmount >= groupAmount
+              ? ['ALLOCATED']
+              : aggregate?.statuses ?? ['PARTIALLY_ALLOCATED'],
+        ),
       }
     })
     .sort((left, right) => left.groupNumber.localeCompare(right.groupNumber))
 
   const totalPassengers = groupDetails.reduce((total, group) => total + group.numberOfPax, 0)
-  const totalAllocatedRevenue = groupDetails.reduce((total, group) => total + group.groupAmount, 0)
+  const totalGroupAmount = groupDetails.reduce((total, group) => total + group.groupAmount, 0)
+  const totalAllocatedRevenue = groupAggregates.size
+    ? Array.from(groupAggregates.values()).reduce((total, group) => total + group.groupAmount, 0)
+    : 0
+  const advanceBalance = paymentSnapshots.reduce((total, payment) => total + payment.advanceBalance, 0)
+  const outstandingBalance = Math.max(totalGroupAmount - totalAllocatedRevenue, 0)
   const totalRevenue = paymentSnapshots.reduce((total, payment) => total + payment.amountPaid, 0)
-  const outstandingBalance = paymentSnapshots.reduce(
-    (total, payment) => total + payment.remainingBalance,
-    0,
-  )
 
   return {
     filters: {
@@ -226,16 +230,17 @@ export function buildAgencyReport({ agency, groups, payments, filters }: AgencyR
     businessSummary: {
       totalGroups: groupDetails.length,
       totalPassengers,
-      pricePerPax:
-        totalPassengers > 0 ? Number((totalAllocatedRevenue / totalPassengers).toFixed(2)) : 0,
-      totalAmount: Number(totalAllocatedRevenue.toFixed(2)),
+      pricePerPax: totalPassengers > 0 ? Number((totalGroupAmount / totalPassengers).toFixed(2)) : 0,
+      totalAmount: Number(totalGroupAmount.toFixed(2)),
       totalAmountPaid: Number(totalRevenue.toFixed(2)),
       remainingBalance: Number(outstandingBalance.toFixed(2)),
+      advanceBalance: Number(advanceBalance.toFixed(2)),
+      netBalance: Number((outstandingBalance - advanceBalance).toFixed(2)),
     },
     groupDetails,
     paymentHistory: paymentSnapshots,
     calculations: {
-      totalRevenue: Number(totalRevenue.toFixed(2)),
+      totalRevenue: Number(totalGroupAmount.toFixed(2)),
       totalPaid: Number(totalAllocatedRevenue.toFixed(2)),
       outstandingBalance: Number(outstandingBalance.toFixed(2)),
     },

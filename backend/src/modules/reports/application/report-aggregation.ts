@@ -11,6 +11,11 @@ type AgencyLike = {
 
 type PaymentGroupLike = {
   allocatedAmount: number | string | { toString(): string }
+  group: {
+    id: string
+    agencyId: string
+    code: string
+  }
 }
 
 type PaymentLike = {
@@ -26,9 +31,16 @@ type PaymentLike = {
   paymentGroups: PaymentGroupLike[]
 }
 
+type GroupLike = {
+  id: string
+  agencyId: string
+  totalAmount: number | string | { toString(): string } | null
+}
+
 type ReportInput = {
   payments: PaymentLike[]
   agencies: AgencyLike[]
+  groups: GroupLike[]
   year: number
   month?: number
 }
@@ -45,7 +57,7 @@ function getEffectiveDate(payment: PaymentLike) {
   return payment.paidAt ?? payment.createdAt
 }
 
-export function buildReportSummary({ payments, agencies, year, month }: ReportInput) {
+export function buildReportSummary({ payments, agencies, groups, year, month }: ReportInput) {
   const scopedPayments = payments.filter((payment) => {
     const effectiveDate = getEffectiveDate(payment)
 
@@ -106,6 +118,25 @@ export function buildReportSummary({ payments, agencies, year, month }: ReportIn
       paymentCount: number
     }
   >()
+  const totalAmountByAgency = new Map<string, number>()
+  const allocatedAmountByAgency = new Map<string, number>()
+
+  groups.forEach((group) => {
+    totalAmountByAgency.set(
+      group.agencyId,
+      (totalAmountByAgency.get(group.agencyId) ?? 0) + toAmount(group.totalAmount ?? 0),
+    )
+  })
+
+  payments.forEach((payment) => {
+    payment.paymentGroups.forEach((paymentGroup) => {
+      const agencyId = paymentGroup.group.agencyId
+      allocatedAmountByAgency.set(
+        agencyId,
+        (allocatedAmountByAgency.get(agencyId) ?? 0) + toAmount(paymentGroup.allocatedAmount),
+      )
+    })
+  })
 
   paymentSnapshots.forEach((payment) => {
     const countryBucket = countryRevenueMap.get(payment.country) ?? {
@@ -113,7 +144,6 @@ export function buildReportSummary({ payments, agencies, year, month }: ReportIn
       outstandingBalance: 0,
     }
     countryBucket.revenue += payment.amount
-    countryBucket.outstandingBalance += payment.remainingBalance
     countryRevenueMap.set(payment.country, countryBucket)
 
     const agency = agencies.find((item) => item.id === payment.agencyId)
@@ -128,14 +158,24 @@ export function buildReportSummary({ payments, agencies, year, month }: ReportIn
     }
 
     agencyBucket.revenue += payment.amount
-    agencyBucket.outstandingBalance += payment.remainingBalance
     agencyBucket.paymentCount += 1
     agencyRevenueMap.set(payment.agencyId, agencyBucket)
   })
 
+  agencyRevenueMap.forEach((bucket, agencyId) => {
+    const totalAmount = totalAmountByAgency.get(agencyId) ?? 0
+    const allocatedAmount = allocatedAmountByAgency.get(agencyId) ?? 0
+    bucket.outstandingBalance = Math.max(totalAmount - allocatedAmount, 0)
+
+    const countryBucket = countryRevenueMap.get(bucket.country)
+    if (countryBucket) {
+      countryBucket.outstandingBalance += bucket.outstandingBalance
+    }
+  })
+
   const totalRevenue = paymentSnapshots.reduce((total, payment) => total + payment.amount, 0)
-  const totalOutstandingBalance = paymentSnapshots.reduce(
-    (total, payment) => total + payment.remainingBalance,
+  const totalOutstandingBalance = Array.from(agencyRevenueMap.values()).reduce(
+    (total, agency) => total + agency.outstandingBalance,
     0,
   )
   const totalAllocated = paymentSnapshots.reduce(

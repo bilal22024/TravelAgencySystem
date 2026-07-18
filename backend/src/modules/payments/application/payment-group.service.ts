@@ -14,6 +14,41 @@ function isSuperAdmin(user: AuthenticatedUser) {
   return user.role === 'SUPER_ADMIN'
 }
 
+async function getAccessiblePaymentAgencyIds(authUser: AuthenticatedUser) {
+  if (isSuperAdmin(authUser)) {
+    return null
+  }
+
+  if (typeof prisma.agency?.findUnique !== 'function') {
+    return [authUser.agencyId]
+  }
+
+  const agency = await prisma.agency.findUnique({
+    where: {
+      id: authUser.agencyId,
+    },
+    select: {
+      id: true,
+      agencyType: true,
+      branches: {
+        select: {
+          id: true,
+        },
+      },
+    },
+  })
+
+  if (!agency) {
+    return [authUser.agencyId]
+  }
+
+  if (agency.agencyType === 'PARENT') {
+    return [agency.id, ...agency.branches.map((branch) => branch.id)]
+  }
+
+  return [agency.id]
+}
+
 type CreatePaymentGroupInput = Prisma.PaymentGroupUncheckedCreateInput
 type UpdatePaymentGroupInput = Prisma.PaymentGroupUncheckedUpdateInput
 
@@ -23,13 +58,20 @@ const paymentGroupInclude = {
 } satisfies Prisma.PaymentGroupInclude
 
 async function ensureAgencyAccess(paymentId: string, groupId: string, authUser: AuthenticatedUser) {
+  const accessibleAgencyIds = await getAccessiblePaymentAgencyIds(authUser)
   const payment = await prisma.payment.findUnique({
     where: {
       id: paymentId,
     },
     select: {
+      id: true,
       agencyId: true,
       status: true,
+      agency: {
+        select: {
+          agencyType: true,
+        },
+      },
     },
   })
 
@@ -38,7 +80,20 @@ async function ensureAgencyAccess(paymentId: string, groupId: string, authUser: 
       id: groupId,
     },
     select: {
+      id: true,
       agencyId: true,
+      agency: {
+        select: {
+          parentAgencyId: true,
+        },
+      },
+      paymentGroups: {
+        select: {
+          id: true,
+          allocatedAmount: true,
+        },
+      },
+      totalAmount: true,
     },
   })
 
@@ -46,16 +101,25 @@ async function ensureAgencyAccess(paymentId: string, groupId: string, authUser: 
     throw new AppError('Related payment or group could not be found', 404)
   }
 
-  if (payment.agencyId !== group.agencyId) {
-    throw new AppError('Payment and group must belong to the same agency', 400)
+  const isSameAgency = payment.agencyId === group.agencyId
+  const isParentCoveringBranch =
+    payment.agency?.agencyType === 'PARENT' && group.agency?.parentAgencyId === payment.agencyId
+
+  if (!isSameAgency && !isParentCoveringBranch) {
+    throw new AppError('A payment can only be allocated to its own agency or a connected branch.', 400)
   }
 
-  if (!isSuperAdmin(authUser) && payment.agencyId !== authUser.agencyId) {
+  if (accessibleAgencyIds && !accessibleAgencyIds.includes(payment.agencyId)) {
     throw new AppError('You can only manage allocations inside your own agency', 403)
   }
 
   if (isExceptionalPaymentStatus(payment.status)) {
     throw new AppError('Failed or refunded payments cannot receive allocations', 400)
+  }
+
+  return {
+    payment,
+    group,
   }
 }
 
@@ -91,6 +155,44 @@ async function ensureAllocationDoesNotExceedPayment(
   }
 }
 
+async function ensureAllocationDoesNotExceedGroupOutstanding(
+  groupId: string,
+  allocatedAmount: number,
+  excludePaymentGroupId?: string,
+) {
+  const group = await prisma.group.findUnique({
+    where: {
+      id: groupId,
+    },
+    select: {
+      totalAmount: true,
+      paymentGroups: {
+        select: {
+          id: true,
+          allocatedAmount: true,
+        },
+      },
+    },
+  })
+
+  if (!group) {
+    throw new AppError('Related group could not be found', 404)
+  }
+
+  const existingAllocations = (group.paymentGroups ?? []).filter((paymentGroup) => {
+    return paymentGroup.id !== excludePaymentGroupId
+  })
+  const nextAllocatedAmount = sumAllocatedAmount(existingAllocations) + allocatedAmount
+  const totalAmount = Number(group.totalAmount ?? 0)
+
+  if (nextAllocatedAmount > totalAmount) {
+    throw new AppError('Allocated amount cannot exceed the group outstanding balance', 400, {
+      groupTotalAmount: totalAmount,
+      nextAllocatedAmount,
+    })
+  }
+}
+
 async function syncPaymentStatus(paymentId: string) {
   const payment = await prisma.payment.findUnique({
     where: {
@@ -119,14 +221,17 @@ async function syncPaymentStatus(paymentId: string) {
 }
 
 export async function listPaymentGroups(authUser: AuthenticatedUser, query: PaymentGroupListQuery) {
+  const accessibleAgencyIds = await getAccessiblePaymentAgencyIds(authUser)
   const where: Prisma.PaymentGroupWhereInput = {
-    ...(isSuperAdmin(authUser)
-      ? {}
-      : {
+    ...(accessibleAgencyIds
+      ? {
           payment: {
-            agencyId: authUser.agencyId,
+            agencyId: {
+              in: accessibleAgencyIds,
+            },
           },
-        }),
+        }
+      : {}),
     ...(query.paymentId ? { paymentId: query.paymentId } : {}),
     ...(query.groupId ? { groupId: query.groupId } : {}),
   }
@@ -150,6 +255,7 @@ export async function listPaymentGroups(authUser: AuthenticatedUser, query: Paym
 }
 
 export async function getPaymentGroupById(id: string, authUser: AuthenticatedUser) {
+  const accessibleAgencyIds = await getAccessiblePaymentAgencyIds(authUser)
   const paymentGroup = await prisma.paymentGroup.findUnique({
     where: {
       id,
@@ -159,7 +265,7 @@ export async function getPaymentGroupById(id: string, authUser: AuthenticatedUse
 
   if (
     !paymentGroup ||
-    (!isSuperAdmin(authUser) && paymentGroup.payment.agencyId !== authUser.agencyId)
+    (accessibleAgencyIds && !accessibleAgencyIds.includes(paymentGroup.payment.agencyId))
   ) {
     throw new AppError('Payment allocation not found', 404)
   }
@@ -173,6 +279,7 @@ export async function createPaymentGroup(
 ) {
   await ensureAgencyAccess(data.paymentId, data.groupId, authUser)
   await ensureAllocationDoesNotExceedPayment(data.paymentId, Number(data.allocatedAmount))
+  await ensureAllocationDoesNotExceedGroupOutstanding(data.groupId, Number(data.allocatedAmount))
 
   const paymentGroup = await prisma.paymentGroup.create({
     data,
@@ -213,6 +320,7 @@ export async function updatePaymentGroup(
 
   await ensureAgencyAccess(nextPaymentId, nextGroupId, authUser)
   await ensureAllocationDoesNotExceedPayment(nextPaymentId, nextAllocatedAmount, id)
+  await ensureAllocationDoesNotExceedGroupOutstanding(nextGroupId, nextAllocatedAmount, id)
 
   const paymentGroup = await prisma.paymentGroup.update({
     where: {
@@ -232,6 +340,7 @@ export async function updatePaymentGroup(
 }
 
 export async function deletePaymentGroup(id: string, authUser: AuthenticatedUser) {
+  const accessibleAgencyIds = await getAccessiblePaymentAgencyIds(authUser)
   const existingPaymentGroup = await prisma.paymentGroup.findUnique({
     where: {
       id,
@@ -247,7 +356,7 @@ export async function deletePaymentGroup(id: string, authUser: AuthenticatedUser
 
   if (
     !existingPaymentGroup ||
-    (!isSuperAdmin(authUser) && existingPaymentGroup.payment.agencyId !== authUser.agencyId)
+    (accessibleAgencyIds && !accessibleAgencyIds.includes(existingPaymentGroup.payment.agencyId))
   ) {
     throw new AppError('Payment allocation not found', 404)
   }

@@ -133,6 +133,8 @@ export type AgencyFinancialSummary = {
   totalGroupAmount: number
   totalPaymentsReceived: number
   outstandingBalance: number
+  advanceBalance: number
+  netBalance: number
   scopeAgencyIds: string[]
   includeBranches: boolean
 }
@@ -243,6 +245,7 @@ export type GroupDetail = GroupRecord & {
 export type Payment = {
   id: string
   agencyId: string
+  paidByAgencyId?: string
   receivedByUserId: string | null
   receiptNumber: string | null
   reference: string
@@ -259,11 +262,18 @@ export type Payment = {
 
 export type PaymentRecord = Payment & {
   agency?: Agency | null
+  paidByAgency?: Agency | null
   receivedBy?: PublicUser | null
   paymentGroups?: PaymentGroup[]
   allocatedAmount: number
   remainingBalance: number
   allocationCount: number
+  advanceBalance: number
+  allocatedAgencies?: Array<{
+    id: string
+    name: string
+    code: string
+  }>
 }
 
 export type PaymentGroup = {
@@ -287,12 +297,16 @@ export type PaymentEntryGroup = {
   groupId: string
   groupNumber: string
   groupName: string
+  agencyId: string
+  agencyName: string
+  agencyCode: string
   passengers: number
   totalAmount: number
   paidAmount: number
   remainingAmount: number
   status: PaymentEntryGroupStatus
   statusLabel: string
+  createdAt: string
 }
 
 export type PaymentEntryContext = {
@@ -303,6 +317,7 @@ export type PaymentEntryContext = {
     city: string
     country: string
   }
+  allowedAgencyIds: string[]
   groups: PaymentEntryGroup[]
 }
 
@@ -317,7 +332,15 @@ export type PaymentReceipt = {
   remarks: string
   currentPaymentAmount: number
   totalAllocatedAmount: number
+  advanceBalance: number
   agency: {
+    id: string
+    agencyName: string
+    agentNumber: string
+    country: string
+    city: string
+  }
+  paidByAgency: {
     id: string
     agencyName: string
     agentNumber: string
@@ -328,6 +351,8 @@ export type PaymentReceipt = {
     groupId: string
     groupNumber: string
     groupName: string
+    agencyId: string
+    agencyName: string
     passengers: number
     groupTotalAmount: number
     allocatedAmount: number
@@ -340,8 +365,10 @@ export type PaymentEntryResult = {
   summary: {
     selectedGroupsTotal: number
     alreadyPaid: number
+    allocatedAmount: number
     currentPayment: number
     remainingBalance: number
+    advanceBalanceCreated: number
   }
 }
 
@@ -409,6 +436,8 @@ export type AgencyReportBusinessSummary = {
   totalAmount: number
   totalAmountPaid: number
   remainingBalance: number
+  advanceBalance: number
+  netBalance: number
 }
 
 export type AgencyReportGroupDetail = {
@@ -429,10 +458,13 @@ export type AgencyReportPaymentHistoryItem = {
   paymentStatus: PaymentStatus
   paymentDate: string
   paymentCity: string
+  paidByAgencyName: string
+  paidByAgencyCode: string
   receivedBy: string
   remarks: string
   allocatedAmount: number
   remainingBalance: number
+  advanceBalance: number
   paymentGroups: Array<{
     groupId: string
     groupNumber: string
@@ -468,7 +500,7 @@ export type AgencyReport = {
 
 export type AgencyLedgerEntry = {
   id: string
-  type: 'opening_balance' | 'payment' | 'adjustment' | 'outstanding_balance'
+  type: 'opening_balance' | 'group_charge' | 'payment' | 'payment_allocation' | 'adjustment' | 'outstanding_balance'
   date: string | null
   description: string
   referenceNumber: string
@@ -496,6 +528,8 @@ export type AgencyLedger = {
     totalDebits: number
     totalCredits: number
     outstandingBalance: number
+    advanceBalance: number
+    netBalance: number
   }
   entries: AgencyLedgerEntry[]
 }
@@ -513,6 +547,8 @@ export type OutstandingBalanceReportRow = {
   totalAmount: number
   totalAmountPaid: number
   outstandingBalance: number
+  advanceBalance: number
+  netBalance: number
   paymentStatus: OutstandingBalancePaymentStatus
   paymentStatusLabel: string
   lastPaymentDate: string | null

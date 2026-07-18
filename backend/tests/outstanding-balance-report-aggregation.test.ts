@@ -24,12 +24,12 @@ describe('outstanding balance report aggregation', () => {
         {
           agencyId: 'agency-1',
           _count: { _all: 2 },
-          _sum: { travelerCount: 30 },
+          _sum: { travelerCount: 30, totalAmount: 1000 },
         },
         {
           agencyId: 'agency-2',
           _count: { _all: 1 },
-          _sum: { travelerCount: 10 },
+          _sum: { travelerCount: 10, totalAmount: 500 },
         },
       ],
       payments: [
@@ -41,7 +41,7 @@ describe('outstanding balance report aggregation', () => {
           status: 'PARTIALLY_ALLOCATED',
           paidAt: new Date('2026-06-10T00:00:00.000Z'),
           createdAt: new Date('2026-06-09T00:00:00.000Z'),
-          paymentGroups: [{ allocatedAmount: 600 }],
+          paymentGroups: [{ allocatedAmount: 600, group: { agencyId: 'agency-1' } }],
         },
         {
           id: 'payment-2',
@@ -51,7 +51,7 @@ describe('outstanding balance report aggregation', () => {
           status: 'ALLOCATED',
           paidAt: new Date('2026-06-08T00:00:00.000Z'),
           createdAt: new Date('2026-06-07T00:00:00.000Z'),
-          paymentGroups: [{ allocatedAmount: 500 }],
+          paymentGroups: [{ allocatedAmount: 500, group: { agencyId: 'agency-2' } }],
         },
       ],
       filters: {
@@ -67,6 +67,8 @@ describe('outstanding balance report aggregation', () => {
     expect(report.rows[0]?.agencyName).toBe('Al Noor Travel')
     expect(report.rows[0]?.paymentStatus).toBe('PARTIALLY_PAID')
     expect(report.rows[0]?.outstandingBalance).toBe(400)
+    expect(report.rows[0]?.advanceBalance).toBe(400)
+    expect(report.rows[0]?.netBalance).toBe(0)
     expect(report.rows[0]?.totalGroups).toBe(2)
     expect(report.rows[0]?.totalPax).toBe(30)
     expect(report.rows[1]?.paymentStatus).toBe('FULLY_PAID')

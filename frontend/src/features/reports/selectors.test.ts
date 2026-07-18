@@ -25,6 +25,7 @@ describe('report selectors', () => {
           updatedAt: '',
           allocatedAmount: 40,
           remainingBalance: 60,
+          advanceBalance: 60,
           allocationCount: 1,
         },
       ],
@@ -66,6 +67,7 @@ describe('report selectors', () => {
           updatedAt: '',
           allocatedAmount: 0,
           remainingBalance: 100,
+          advanceBalance: 100,
           allocationCount: 0,
         },
         {
@@ -85,6 +87,7 @@ describe('report selectors', () => {
           updatedAt: '',
           allocatedAmount: 100,
           remainingBalance: 0,
+          advanceBalance: 0,
           allocationCount: 1,
         },
       ]),

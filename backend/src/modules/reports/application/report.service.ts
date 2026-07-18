@@ -29,33 +29,76 @@ function isSuperAdmin(user: AuthenticatedUser) {
   return user.role === 'SUPER_ADMIN'
 }
 
-function getAgencyScopeWhere(authUser: AuthenticatedUser): Prisma.AgencyWhereInput {
+async function getAccessibleAgencyIds(authUser: AuthenticatedUser) {
   if (isSuperAdmin(authUser)) {
-    return {}
+    return null
   }
 
-  return {
-    id: authUser.agencyId,
+  const agency = await prisma.agency.findUnique({
+    where: {
+      id: authUser.agencyId,
+    },
+    select: {
+      id: true,
+      agencyType: true,
+      branches: {
+        select: {
+          id: true,
+        },
+      },
+    },
+  })
+
+  if (!agency) {
+    return [authUser.agencyId]
   }
+
+  if (agency.agencyType === 'PARENT') {
+    return [agency.id, ...agency.branches.map((branch) => branch.id)]
+  }
+
+  return [agency.id]
 }
 
-function getPaymentScopeWhere(authUser: AuthenticatedUser): Prisma.PaymentWhereInput {
-  if (isSuperAdmin(authUser)) {
-    return {}
-  }
-
-  return {
-    agencyId: authUser.agencyId,
-  }
+function getAgencyScopeWhere(accessibleAgencyIds: string[] | null): Prisma.AgencyWhereInput {
+  return accessibleAgencyIds
+    ? {
+        id: {
+          in: accessibleAgencyIds,
+        },
+      }
+    : {}
 }
 
-function getScopedAgencyId(authUser: AuthenticatedUser, requestedAgencyId?: string) {
-  if (!isSuperAdmin(authUser)) {
-    return authUser.agencyId
+function getPaymentScopeWhere(accessibleAgencyIds: string[] | null): Prisma.PaymentWhereInput {
+  return accessibleAgencyIds
+    ? {
+        agencyId: {
+          in: accessibleAgencyIds,
+        },
+      }
+    : {}
+}
+
+function getScopedAgencyId(
+  authUser: AuthenticatedUser,
+  accessibleAgencyIds: string[] | null,
+  requestedAgencyId?: string,
+) {
+  if (isSuperAdmin(authUser)) {
+    if (!requestedAgencyId) {
+      throw new AppError('Please select an agency before loading the agency report', 400)
+    }
+
+    return requestedAgencyId
   }
 
   if (!requestedAgencyId) {
-    throw new AppError('Please select an agency before loading the agency report', 400)
+    return authUser.agencyId
+  }
+
+  if (accessibleAgencyIds && !accessibleAgencyIds.includes(requestedAgencyId)) {
+    throw new AppError('Agency not found', 404)
   }
 
   return requestedAgencyId
@@ -118,8 +161,9 @@ function getEffectiveDateWhere(dateFrom?: Date, dateTo?: Date): Prisma.PaymentWh
 }
 
 export async function getReportSummary(authUser: AuthenticatedUser, query: ReportQuery) {
+  const accessibleAgencyIds = await getAccessibleAgencyIds(authUser)
   const agencyWhere: Prisma.AgencyWhereInput = {
-    ...getAgencyScopeWhere(authUser),
+    ...getAgencyScopeWhere(accessibleAgencyIds),
     ...(query.search
       ? {
           OR: [
@@ -145,7 +189,7 @@ export async function getReportSummary(authUser: AuthenticatedUser, query: Repor
   }
 
   const paymentWhere: Prisma.PaymentWhereInput = {
-    ...getPaymentScopeWhere(authUser),
+    ...getPaymentScopeWhere(accessibleAgencyIds),
     ...(query.search
       ? {
           OR: [
@@ -166,7 +210,28 @@ export async function getReportSummary(authUser: AuthenticatedUser, query: Repor
       : {}),
   }
 
-  const [agencies, payments] = await prisma.$transaction([
+  const groupWhere: Prisma.GroupWhereInput = {
+    ...(accessibleAgencyIds
+      ? {
+          agencyId: {
+            in: accessibleAgencyIds,
+          },
+        }
+      : {}),
+    ...(query.search
+      ? {
+          OR: [
+            { code: { contains: query.search, mode: 'insensitive' } },
+            { name: { contains: query.search, mode: 'insensitive' } },
+            { agency: { name: { contains: query.search, mode: 'insensitive' } } },
+            { agency: { country: { contains: query.search, mode: 'insensitive' } } },
+            { agency: { city: { contains: query.search, mode: 'insensitive' } } },
+          ],
+        }
+      : {}),
+  }
+
+  const [agencies, groups, payments] = await prisma.$transaction([
     prisma.agency.findMany({
       where: agencyWhere,
       select: {
@@ -179,6 +244,14 @@ export async function getReportSummary(authUser: AuthenticatedUser, query: Repor
       },
       orderBy: {
         name: 'asc',
+      },
+    }),
+    prisma.group.findMany({
+      where: groupWhere,
+      select: {
+        id: true,
+        agencyId: true,
+        totalAmount: true,
       },
     }),
     prisma.payment.findMany({
@@ -210,6 +283,8 @@ export async function getReportSummary(authUser: AuthenticatedUser, query: Repor
             allocatedAmount: true,
             group: {
               select: {
+                id: true,
+                agencyId: true,
                 code: true,
               },
             },
@@ -224,6 +299,7 @@ export async function getReportSummary(authUser: AuthenticatedUser, query: Repor
 
   return buildReportSummary({
     agencies,
+    groups,
     payments,
     year: query.year,
     month: query.month,
@@ -261,14 +337,15 @@ export async function exportReport(
 }
 
 export async function getAgencyReport(authUser: AuthenticatedUser, query: AgencyReportQuery) {
-  const agencyId = getScopedAgencyId(authUser, query.agencyId)
+  const accessibleAgencyIds = await getAccessibleAgencyIds(authUser)
+  const agencyId = getScopedAgencyId(authUser, accessibleAgencyIds, query.agencyId)
   const { dateFrom, dateTo } = toDayRange(query.dateFrom, query.dateTo)
 
   const [agency, groups, payments] = await prisma.$transaction([
     prisma.agency.findFirst({
       where: {
         id: agencyId,
-        ...getAgencyScopeWhere(authUser),
+        ...getAgencyScopeWhere(accessibleAgencyIds),
       },
       select: {
         id: true,
@@ -291,6 +368,7 @@ export async function getAgencyReport(authUser: AuthenticatedUser, query: Agency
         id: true,
         code: true,
         travelerCount: true,
+        totalAmount: true,
       },
       orderBy: {
         code: 'asc',
@@ -298,19 +376,29 @@ export async function getAgencyReport(authUser: AuthenticatedUser, query: Agency
     }),
     prisma.payment.findMany({
       where: {
-        agencyId,
-        ...(query.paymentStatus ? { status: query.paymentStatus } : {}),
-        ...(query.groupNumber
-          ? {
-              paymentGroups: {
-                some: {
-                  group: {
-                    code: { contains: query.groupNumber, mode: 'insensitive' },
-                  },
+        OR: [
+          {
+            agencyId,
+          },
+          {
+            paymentGroups: {
+              some: {
+                group: {
+                  agencyId,
+                  ...(query.groupNumber
+                    ? {
+                        code: {
+                          contains: query.groupNumber,
+                          mode: 'insensitive',
+                        },
+                      }
+                    : {}),
                 },
               },
-            }
-          : {}),
+            },
+          },
+        ],
+        ...(query.paymentStatus ? { status: query.paymentStatus } : {}),
       },
       include: {
         agency: {
@@ -330,6 +418,16 @@ export async function getAgencyReport(authUser: AuthenticatedUser, query: Agency
           },
         },
         paymentGroups: {
+          where: {
+            group: {
+              agencyId,
+              ...(query.groupNumber
+                ? {
+                    code: { contains: query.groupNumber, mode: 'insensitive' },
+                  }
+                : {}),
+            },
+          },
           select: {
             allocatedAmount: true,
             notes: true,
@@ -401,14 +499,15 @@ export async function exportAgencyReport(
 }
 
 export async function getAgencyLedger(authUser: AuthenticatedUser, query: AgencyLedgerQuery) {
-  const agencyId = getScopedAgencyId(authUser, query.agencyId)
+  const accessibleAgencyIds = await getAccessibleAgencyIds(authUser)
+  const agencyId = getScopedAgencyId(authUser, accessibleAgencyIds, query.agencyId)
   const { dateFrom, dateTo } = toDayRange(query.dateFrom, query.dateTo)
 
-  const [agency, payments] = await prisma.$transaction([
+  const [agency, groups, payments] = await prisma.$transaction([
     prisma.agency.findFirst({
       where: {
         id: agencyId,
-        ...getAgencyScopeWhere(authUser),
+        ...getAgencyScopeWhere(accessibleAgencyIds),
       },
       select: {
         id: true,
@@ -416,20 +515,56 @@ export async function getAgencyLedger(authUser: AuthenticatedUser, query: Agency
         code: true,
         city: true,
         country: true,
+        openingBalance: true,
       },
     }),
-    prisma.payment.findMany({
+    prisma.group.findMany({
       where: {
         agencyId,
       },
       select: {
         id: true,
+        code: true,
+        totalAmount: true,
+        createdAt: true,
+      },
+      orderBy: {
+        createdAt: 'asc',
+      },
+    }),
+    prisma.payment.findMany({
+      where: {
+        OR: [
+          {
+            agencyId,
+          },
+          {
+            paymentGroups: {
+              some: {
+                group: {
+                  agencyId,
+                },
+              },
+            },
+          },
+        ],
+      },
+      select: {
+        id: true,
+        agencyId: true,
         reference: true,
         amount: true,
         currency: true,
         description: true,
         paidAt: true,
         createdAt: true,
+        agency: {
+          select: {
+            id: true,
+            name: true,
+            code: true,
+          },
+        },
         paymentGroups: {
           select: {
             id: true,
@@ -438,7 +573,16 @@ export async function getAgencyLedger(authUser: AuthenticatedUser, query: Agency
             createdAt: true,
             group: {
               select: {
+                id: true,
+                agencyId: true,
                 code: true,
+                agency: {
+                  select: {
+                    id: true,
+                    name: true,
+                    code: true,
+                  },
+                },
               },
             },
           },
@@ -461,6 +605,7 @@ export async function getAgencyLedger(authUser: AuthenticatedUser, query: Agency
 
   return buildAgencyLedger({
     agency,
+    groups,
     payments,
     filters: {
       dateFrom,
@@ -486,9 +631,10 @@ export async function getOutstandingBalanceReport(
   authUser: AuthenticatedUser,
   query: OutstandingBalanceReportQuery,
 ) {
+  const accessibleAgencyIds = await getAccessibleAgencyIds(authUser)
   const { dateFrom, dateTo } = toDayRange(query.dateFrom, query.dateTo)
   const agencyWhere: Prisma.AgencyWhereInput = {
-    ...getAgencyScopeWhere(authUser),
+    ...getAgencyScopeWhere(accessibleAgencyIds),
     ...(query.search
       ? {
           OR: [
@@ -549,13 +695,29 @@ export async function getOutstandingBalanceReport(
       },
       _sum: {
         travelerCount: true,
+        totalAmount: true,
       },
     }),
     prisma.payment.findMany({
       where: {
-        agencyId: {
-          in: agencyIds,
-        },
+        OR: [
+          {
+            agencyId: {
+              in: agencyIds,
+            },
+          },
+          {
+            paymentGroups: {
+              some: {
+                group: {
+                  agencyId: {
+                    in: agencyIds,
+                  },
+                },
+              },
+            },
+          },
+        ],
         ...getEffectiveDateWhere(dateFrom, dateTo),
       },
       select: {
@@ -569,6 +731,11 @@ export async function getOutstandingBalanceReport(
         paymentGroups: {
           select: {
             allocatedAmount: true,
+            group: {
+              select: {
+                agencyId: true,
+              },
+            },
           },
         },
       },

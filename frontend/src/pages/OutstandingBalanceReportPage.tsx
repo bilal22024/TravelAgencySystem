@@ -88,7 +88,7 @@ export function OutstandingBalanceReportPage() {
       <PageHeader
         eyebrow="Outstanding balance report"
         title="Identify agencies with unpaid and partially paid balances quickly"
-        description="This report reuses the current payment, allocation, and agency data to surface outstanding balances, triage next actions, and keep exports aligned with the live backend calculations."
+        description="This report now separates outstanding balances from advance credits so finance can see both the gross due amount and the net position for each agency."
         action={
           <div className="grid gap-3 sm:grid-cols-4">
             <button
@@ -285,6 +285,8 @@ export function OutstandingBalanceReportPage() {
                   <th className="px-4 py-2 text-right">Total Amount</th>
                   <th className="px-4 py-2 text-right">Total Amount Paid</th>
                   <th className="px-4 py-2 text-right">Outstanding Balance</th>
+                  <th className="px-4 py-2 text-right">Advance Balance</th>
+                  <th className="px-4 py-2 text-right">Net Balance</th>
                   <th className="px-4 py-2">Payment Status</th>
                   <th className="px-4 py-2">Last Payment Date</th>
                   <th className="px-4 py-2">Actions</th>
@@ -315,6 +317,12 @@ export function OutstandingBalanceReportPage() {
                     </td>
                     <td className="border-y border-white/10 bg-white/[0.04] px-4 py-4 text-right font-semibold text-white">
                       {formatCurrency(row.outstandingBalance)}
+                    </td>
+                    <td className="border-y border-white/10 bg-white/[0.04] px-4 py-4 text-right">
+                      {formatCurrency(row.advanceBalance)}
+                    </td>
+                    <td className="border-y border-white/10 bg-white/[0.04] px-4 py-4 text-right">
+                      {formatCurrency(row.netBalance)}
                     </td>
                     <td className="border-y border-white/10 bg-white/[0.04] px-4 py-4">
                       <StatusBadge

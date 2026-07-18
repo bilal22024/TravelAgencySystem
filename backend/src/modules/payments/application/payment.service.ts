@@ -16,6 +16,41 @@ function isSuperAdmin(user: AuthenticatedUser) {
   return user.role === 'SUPER_ADMIN'
 }
 
+async function getAuthenticatedPaymentAgencyIds(authUser: AuthenticatedUser) {
+  if (isSuperAdmin(authUser)) {
+    return null
+  }
+
+  if (typeof prisma.agency?.findUnique !== 'function') {
+    return [authUser.agencyId]
+  }
+
+  const agency = await prisma.agency.findUnique({
+    where: {
+      id: authUser.agencyId,
+    },
+    select: {
+      id: true,
+      agencyType: true,
+      branches: {
+        select: {
+          id: true,
+        },
+      },
+    },
+  })
+
+  if (!agency) {
+    return [authUser.agencyId]
+  }
+
+  if (agency.agencyType === 'PARENT') {
+    return [agency.id, ...agency.branches.map((branch) => branch.id)]
+  }
+
+  return [agency.id]
+}
+
 type CreatePaymentInput = Prisma.PaymentUncheckedCreateInput
 type UpdatePaymentInput = Prisma.PaymentUncheckedUpdateInput
 type PaymentReferenceClient = Pick<typeof prisma, 'payment'>
@@ -23,7 +58,25 @@ type PaymentReferenceClient = Pick<typeof prisma, 'payment'>
 const paymentInclude = {
   agency: true,
   receivedBy: true,
-  paymentGroups: true,
+  paymentGroups: {
+    include: {
+      group: {
+        select: {
+          id: true,
+          code: true,
+          name: true,
+          agencyId: true,
+          agency: {
+            select: {
+              id: true,
+              name: true,
+              code: true,
+            },
+          },
+        },
+      },
+    },
+  },
 } satisfies Prisma.PaymentInclude
 
 type PaymentRecord = Prisma.PaymentGetPayload<{
@@ -40,6 +93,14 @@ const paymentReceiptInclude = {
           id: true,
           code: true,
           name: true,
+          agencyId: true,
+          agency: {
+            select: {
+              id: true,
+              name: true,
+              code: true,
+            },
+          },
           travelerCount: true,
           totalAmount: true,
         },
@@ -58,6 +119,10 @@ function toCents(value: number | string | Prisma.Decimal) {
 
 function fromCents(value: number) {
   return Number((value / 100).toFixed(2))
+}
+
+function roundAmount(value: number) {
+  return Number(value.toFixed(2))
 }
 
 function normalizeReference(reference: string) {
@@ -123,15 +188,79 @@ function getGroupSettlementLabel(status: 'UNPAID' | 'PARTIALLY_PAID' | 'FULLY_PA
   }
 }
 
+async function getAgencyAllocationScope(agencyId: string) {
+  const agency = await prisma.agency.findUnique({
+    where: {
+      id: agencyId,
+    },
+    select: {
+      id: true,
+      name: true,
+      code: true,
+      agencyType: true,
+      city: true,
+      country: true,
+      branches: {
+        select: {
+          id: true,
+          name: true,
+          code: true,
+        },
+        orderBy: {
+          name: 'asc',
+        },
+      },
+    },
+  })
+
+  if (!agency) {
+    throw new AppError('Agency not found', 404)
+  }
+
+  const allowedAgencyIds =
+    agency.agencyType === 'PARENT' ? [agency.id, ...agency.branches.map((branch) => branch.id)] : [agency.id]
+
+  return {
+    agency,
+    allowedAgencyIds,
+  }
+}
+
+async function ensurePaymentAgencyAccess(agencyId: string, authUser: AuthenticatedUser) {
+  const accessibleAgencyIds = await getAuthenticatedPaymentAgencyIds(authUser)
+
+  if (accessibleAgencyIds && !accessibleAgencyIds.includes(agencyId)) {
+    throw new AppError('You can only create payments inside your agency scope', 403)
+  }
+
+  return getAgencyAllocationScope(agencyId)
+}
+
 function serializePayment(payment: PaymentRecord) {
   const summary = getPaymentSummary(payment.amount.toString(), payment.paymentGroups, payment.status)
+  const allocatedAgencies = Array.from(
+    new Map(
+      payment.paymentGroups.map((paymentGroup) => [
+        paymentGroup.group.agency.id,
+        {
+          id: paymentGroup.group.agency.id,
+          name: paymentGroup.group.agency.name,
+          code: paymentGroup.group.agency.code,
+        },
+      ]),
+    ).values(),
+  )
 
   return {
     ...payment,
+    paidByAgencyId: payment.agencyId,
+    paidByAgency: payment.agency,
     allocatedAmount: summary.allocatedAmount,
     remainingBalance: summary.remainingBalance,
     allocationCount: summary.allocationCount,
     status: summary.status,
+    advanceBalance: summary.remainingBalance,
+    allocatedAgencies,
   }
 }
 
@@ -162,10 +291,20 @@ function serializeReceipt(payment: PaymentReceiptRecord) {
       country: payment.agency.country ?? 'Unspecified',
       city: payment.agency.city ?? 'Unspecified',
     },
+    paidByAgency: {
+      id: payment.agency.id,
+      agencyName: payment.agency.name,
+      agentNumber: payment.agency.code,
+      country: payment.agency.country ?? 'Unspecified',
+      city: payment.agency.city ?? 'Unspecified',
+    },
+    advanceBalance: roundAmount(Number(payment.amount) - totalAllocatedAmount),
     groups: payment.paymentGroups.map((paymentGroup) => ({
       groupId: paymentGroup.group.id,
       groupNumber: paymentGroup.group.code,
       groupName: paymentGroup.group.name,
+      agencyId: paymentGroup.group.agency.id,
+      agencyName: paymentGroup.group.agency.name,
       passengers: paymentGroup.group.travelerCount,
       groupTotalAmount: Number(paymentGroup.group.totalAmount ?? 0),
       allocatedAmount: Number(paymentGroup.allocatedAmount),
@@ -176,12 +315,17 @@ function serializeReceipt(payment: PaymentReceiptRecord) {
 export type PaymentReceipt = ReturnType<typeof serializeReceipt>
 
 export async function listPayments(authUser: AuthenticatedUser, query: PaymentListQuery) {
+  const accessibleAgencyIds = await getAuthenticatedPaymentAgencyIds(authUser)
+  const scopedAgencyIds = accessibleAgencyIds
+    ? query.agencyId
+      ? accessibleAgencyIds.includes(query.agencyId)
+        ? [query.agencyId]
+        : []
+      : accessibleAgencyIds
+    : undefined
+
   const where: Prisma.PaymentWhereInput = {
-    ...(isSuperAdmin(authUser)
-      ? {}
-      : {
-          agencyId: authUser.agencyId,
-        }),
+    ...(scopedAgencyIds ? { agencyId: { in: scopedAgencyIds } } : {}),
     ...(isSuperAdmin(authUser) && query.agencyId ? { agencyId: query.agencyId } : {}),
     ...(query.status ? { status: query.status } : {}),
     ...(query.method ? { method: query.method } : {}),
@@ -240,6 +384,7 @@ export async function listPayments(authUser: AuthenticatedUser, query: PaymentLi
 }
 
 export async function getPaymentById(id: string, authUser: AuthenticatedUser) {
+  const accessibleAgencyIds = await getAuthenticatedPaymentAgencyIds(authUser)
   const payment = await prisma.payment.findUnique({
     where: {
       id,
@@ -247,7 +392,7 @@ export async function getPaymentById(id: string, authUser: AuthenticatedUser) {
     include: paymentInclude,
   })
 
-  if (!payment || (!isSuperAdmin(authUser) && payment.agencyId !== authUser.agencyId)) {
+  if (!payment || (accessibleAgencyIds && !accessibleAgencyIds.includes(payment.agencyId))) {
     throw new AppError('Payment not found', 404)
   }
 
@@ -255,9 +400,7 @@ export async function getPaymentById(id: string, authUser: AuthenticatedUser) {
 }
 
 export async function createPayment(data: CreatePaymentInput, authUser: AuthenticatedUser) {
-  if (!isSuperAdmin(authUser) && data.agencyId !== authUser.agencyId) {
-    throw new AppError('You can only create payments inside your own agency', 403)
-  }
+  await ensurePaymentAgencyAccess(String(data.agencyId), authUser)
 
   const normalizedReference = normalizeReference(String(data.reference))
   await ensureUniqueReference(normalizedReference)
@@ -299,6 +442,7 @@ export async function updatePayment(
   data: UpdatePaymentInput,
   authUser: AuthenticatedUser,
 ) {
+  const accessibleAgencyIds = await getAuthenticatedPaymentAgencyIds(authUser)
   const existingPayment = await prisma.payment.findUnique({
     where: {
       id,
@@ -306,10 +450,7 @@ export async function updatePayment(
     include: paymentInclude,
   })
 
-  if (
-    !existingPayment ||
-    (!isSuperAdmin(authUser) && existingPayment.agencyId !== authUser.agencyId)
-  ) {
+  if (!existingPayment || (accessibleAgencyIds && !accessibleAgencyIds.includes(existingPayment.agencyId))) {
     throw new AppError('Payment not found', 404)
   }
 
@@ -366,35 +507,27 @@ export async function updatePayment(
 }
 
 export async function listPaymentEntryGroups(agencyId: string, authUser: AuthenticatedUser) {
-  if (!isSuperAdmin(authUser) && agencyId !== authUser.agencyId) {
-    throw new AppError('You can only create payments inside your own agency', 403)
-  }
-
-  const agency = await prisma.agency.findUnique({
-    where: {
-      id: agencyId,
-    },
-    select: {
-      id: true,
-      name: true,
-      code: true,
-      city: true,
-      country: true,
-    },
-  })
-
-  if (!agency) {
-    throw new AppError('Agency not found', 404)
-  }
+  const { agency, allowedAgencyIds } = await ensurePaymentAgencyAccess(agencyId, authUser)
 
   const groups = await prisma.group.findMany({
     where: {
-      agencyId,
+      agencyId: {
+        in: allowedAgencyIds,
+      },
     },
     select: {
       id: true,
       code: true,
       name: true,
+      createdAt: true,
+      agencyId: true,
+      agency: {
+        select: {
+          id: true,
+          name: true,
+          code: true,
+        },
+      },
       travelerCount: true,
       totalAmount: true,
       paymentGroups: {
@@ -404,7 +537,7 @@ export async function listPaymentEntryGroups(agencyId: string, authUser: Authent
       },
     },
     orderBy: {
-      code: 'asc',
+      createdAt: 'asc',
     },
   })
 
@@ -419,12 +552,16 @@ export async function listPaymentEntryGroups(agencyId: string, authUser: Authent
         groupId: group.id,
         groupNumber: group.code,
         groupName: group.name,
+        agencyId: group.agencyId,
+        agencyName: group.agency.name,
+        agencyCode: group.agency.code,
         passengers: group.travelerCount,
         totalAmount,
         paidAmount,
         remainingAmount,
         status: settlementStatus,
         statusLabel: getGroupSettlementLabel(settlementStatus),
+        createdAt: group.createdAt.toISOString(),
       }
     })
     .filter((group) => group.remainingAmount > 0)
@@ -437,48 +574,35 @@ export async function listPaymentEntryGroups(agencyId: string, authUser: Authent
       city: agency.city ?? 'Unspecified',
       country: agency.country ?? 'Unspecified',
     },
+    allowedAgencyIds,
     groups: rows,
   }
 }
 
 export async function createPaymentEntry(data: PaymentEntryInput, authUser: AuthenticatedUser) {
-  if (!isSuperAdmin(authUser) && data.agencyId !== authUser.agencyId) {
-    throw new AppError('You can only create payments inside your own agency', 403)
-  }
-
+  const { allowedAgencyIds } = await ensurePaymentAgencyAccess(data.agencyId, authUser)
   const normalizedReference = normalizeReference(data.reference)
   const paymentDate = new Date(data.paymentDate)
   const paymentCity = data.paymentCity.trim()
   const remarks = normalizeOptionalString(data.remarks)
-  const selectedGroupIds = data.selectedGroups.map((group) => group.groupId)
-
-  if (new Set(selectedGroupIds).size !== selectedGroupIds.length) {
-    throw new AppError('A group can only be selected once per payment.', 400)
-  }
+  const selectedAllocations: Array<{ groupId: string; allocatedAmount?: number }> =
+    data.allocations.length > 0
+      ? data.allocations.map((allocation) => ({
+          groupId: allocation.groupId,
+          allocatedAmount:
+            allocation.allocatedAmount !== undefined ? Number(allocation.allocatedAmount) : undefined,
+        }))
+      : (data.selectedGroups ?? []).map((group) => ({ groupId: group.groupId }))
+  const selectedGroupIds = selectedAllocations.map((group) => group.groupId)
 
   return prisma.$transaction(async (transaction) => {
     await ensureUniqueReference(normalizedReference, undefined, transaction)
 
-    const agency = await transaction.agency.findUnique({
-      where: {
-        id: data.agencyId,
-      },
-      select: {
-        id: true,
-        name: true,
-        code: true,
-        city: true,
-        country: true,
-      },
-    })
-
-    if (!agency) {
-      throw new AppError('Agency not found', 404)
-    }
-
     const groups = await transaction.group.findMany({
       where: {
-        agencyId: data.agencyId,
+        agencyId: {
+          in: allowedAgencyIds,
+        },
         id: {
           in: selectedGroupIds,
         },
@@ -487,6 +611,15 @@ export async function createPaymentEntry(data: PaymentEntryInput, authUser: Auth
         id: true,
         code: true,
         name: true,
+        createdAt: true,
+        agencyId: true,
+        agency: {
+          select: {
+            id: true,
+            name: true,
+            code: true,
+          },
+        },
         travelerCount: true,
         totalAmount: true,
         paymentGroups: {
@@ -517,6 +650,10 @@ export async function createPaymentEntry(data: PaymentEntryInput, authUser: Auth
         groupId: group!.id,
         groupNumber: group!.code,
         groupName: group!.name,
+        agencyId: group!.agencyId,
+        agencyName: group!.agency.name,
+        agencyCode: group!.agency.code,
+        createdAt: group!.createdAt,
         passengers: group!.travelerCount,
         totalAmount,
         paidAmount,
@@ -524,19 +661,34 @@ export async function createPaymentEntry(data: PaymentEntryInput, authUser: Auth
       }
     })
 
-    const selectedGroupsTotal = Number(
-      groupRows.reduce((total, group) => total + group.totalAmount, 0).toFixed(2),
+    const selectedGroupsTotal = roundAmount(groupRows.reduce((total, group) => total + group.totalAmount, 0))
+    const alreadyPaid = roundAmount(groupRows.reduce((total, group) => total + group.paidAmount, 0))
+    const remainingBeforePayment = roundAmount(
+      groupRows.reduce((total, group) => total + group.remainingAmount, 0),
     )
-    const alreadyPaid = Number(
-      groupRows.reduce((total, group) => total + group.paidAmount, 0).toFixed(2),
-    )
-    const remainingBeforePayment = Number(
-      groupRows.reduce((total, group) => total + group.remainingAmount, 0).toFixed(2),
+    const requestedPaymentAmount = Number(data.currentPaymentAmount)
+    const manualTotal = roundAmount(
+      selectedAllocations.reduce((total, allocation) => total + Number(allocation.allocatedAmount ?? 0), 0),
     )
 
-    if (Number(data.currentPaymentAmount) > remainingBeforePayment) {
-      throw new AppError('Payment amount cannot exceed the remaining balance.', 400, {
-        remainingBalance: remainingBeforePayment,
+    const requestedAllocations =
+      data.allocationMode === 'AUTO_OLDEST'
+        ? groupRows
+            .slice()
+            .sort((left, right) => left.createdAt.getTime() - right.createdAt.getTime())
+            .map((group) => ({
+              groupId: group.groupId,
+              allocatedAmount: 0,
+            }))
+        : selectedAllocations.map((allocation) => ({
+            groupId: allocation.groupId,
+            allocatedAmount: Number(allocation.allocatedAmount ?? 0),
+          }))
+
+    if (data.allocationMode === 'MANUAL' && manualTotal > requestedPaymentAmount) {
+      throw new AppError('Allocated total cannot exceed the current payment amount.', 400, {
+        allocatedAmount: manualTotal,
+        paymentAmount: requestedPaymentAmount,
       })
     }
 
@@ -547,7 +699,7 @@ export async function createPaymentEntry(data: PaymentEntryInput, authUser: Auth
         receivedByUserId: data.receivedByUserId || undefined,
         receiptNumber,
         reference: normalizedReference,
-        amount: new Prisma.Decimal(data.currentPaymentAmount),
+        amount: new Prisma.Decimal(requestedPaymentAmount),
         currency: 'USD',
         method: data.paymentMethod,
         status: 'PENDING',
@@ -558,33 +710,62 @@ export async function createPaymentEntry(data: PaymentEntryInput, authUser: Auth
       include: paymentReceiptInclude,
     })
 
-    let remainingPaymentCents = toCents(data.currentPaymentAmount)
-    const allocations: Prisma.PaymentGroupCreateManyInput[] = groupRows.flatMap((group) => {
-      if (remainingPaymentCents <= 0) {
-        return []
-      }
+    let remainingPaymentCents = toCents(requestedPaymentAmount)
+    const allocations: Prisma.PaymentGroupCreateManyInput[] = requestedAllocations.flatMap(
+      (requestedAllocation) => {
+        const group = groupRows.find((row) => row.groupId === requestedAllocation.groupId)
 
-      const allocatedCents = Math.min(remainingPaymentCents, toCents(group.remainingAmount))
-      remainingPaymentCents -= allocatedCents
+        if (!group || remainingPaymentCents <= 0) {
+          return []
+        }
 
-      return [
-        {
-          id: randomUUID(),
-          paymentId: payment.id,
-          groupId: group.groupId,
-          allocatedAmount: new Prisma.Decimal(fromCents(allocatedCents)),
-          notes: 'Auto allocation from professional payment entry.',
-        },
-      ]
-    })
+        const requestedAllocationCents =
+          data.allocationMode === 'AUTO_OLDEST'
+            ? remainingPaymentCents
+            : toCents(requestedAllocation.allocatedAmount)
 
-    if (allocations.length === 0) {
-      throw new AppError('Current payment amount must be greater than zero.', 400)
+        if (requestedAllocationCents <= 0) {
+          return []
+        }
+
+        const outstandingCents = toCents(group.remainingAmount)
+        const allocatedCents = Math.min(requestedAllocationCents, outstandingCents, remainingPaymentCents)
+
+        if (data.allocationMode === 'MANUAL' && requestedAllocationCents > outstandingCents) {
+          throw new AppError(`Allocated amount cannot exceed the remaining balance for group ${group.groupNumber}.`, 400, {
+            groupId: group.groupId,
+            remainingBalance: group.remainingAmount,
+          })
+        }
+
+        remainingPaymentCents -= allocatedCents
+
+        return [
+          {
+            id: randomUUID(),
+            paymentId: payment.id,
+            groupId: group.groupId,
+            allocatedAmount: new Prisma.Decimal(fromCents(allocatedCents)),
+            notes:
+              data.allocationMode === 'AUTO_OLDEST'
+                ? 'Auto allocation using oldest outstanding first.'
+                : group.agencyId === data.agencyId
+                  ? 'Manual allocation from payment entry.'
+                  : `Manual allocation to branch ${group.agencyCode}.`,
+          },
+        ]
+      },
+    )
+
+    if (allocations.length > 0) {
+      await transaction.paymentGroup.createMany({
+        data: allocations,
+      })
     }
 
-    await transaction.paymentGroup.createMany({
-      data: allocations,
-    })
+    const totalAllocatedAmount = roundAmount(
+      allocations.reduce((total, allocation) => total + Number(allocation.allocatedAmount), 0),
+    )
 
     const finalizedPayment = await transaction.payment.update({
       where: {
@@ -593,7 +774,7 @@ export async function createPaymentEntry(data: PaymentEntryInput, authUser: Auth
       data: {
         status: getDerivedPaymentStatus(
           Number(payment.amount),
-          Number(payment.amount),
+          totalAllocatedAmount,
         ) as PaymentStatus,
       },
       include: paymentReceiptInclude,
@@ -605,16 +786,17 @@ export async function createPaymentEntry(data: PaymentEntryInput, authUser: Auth
       summary: {
         selectedGroupsTotal,
         alreadyPaid,
-        currentPayment: Number(data.currentPaymentAmount.toFixed(2)),
-        remainingBalance: Number(
-          (remainingBeforePayment - Number(data.currentPaymentAmount)).toFixed(2),
-        ),
+        allocatedAmount: totalAllocatedAmount,
+        currentPayment: roundAmount(requestedPaymentAmount),
+        remainingBalance: roundAmount(Math.max(remainingBeforePayment - totalAllocatedAmount, 0)),
+        advanceBalanceCreated: roundAmount(requestedPaymentAmount - totalAllocatedAmount),
       },
     }
   })
 }
 
 export async function getPaymentReceipt(id: string, authUser: AuthenticatedUser) {
+  const accessibleAgencyIds = await getAuthenticatedPaymentAgencyIds(authUser)
   const payment = await prisma.payment.findUnique({
     where: {
       id,
@@ -622,7 +804,7 @@ export async function getPaymentReceipt(id: string, authUser: AuthenticatedUser)
     include: paymentReceiptInclude,
   })
 
-  if (!payment || (!isSuperAdmin(authUser) && payment.agencyId !== authUser.agencyId)) {
+  if (!payment || (accessibleAgencyIds && !accessibleAgencyIds.includes(payment.agencyId))) {
     throw new AppError('Payment not found', 404)
   }
 
@@ -630,6 +812,7 @@ export async function getPaymentReceipt(id: string, authUser: AuthenticatedUser)
 }
 
 export async function deletePayment(id: string, authUser: AuthenticatedUser) {
+  const accessibleAgencyIds = await getAuthenticatedPaymentAgencyIds(authUser)
   const existingPayment = await prisma.payment.findUnique({
     where: {
       id,
@@ -640,10 +823,7 @@ export async function deletePayment(id: string, authUser: AuthenticatedUser) {
     },
   })
 
-  if (
-    !existingPayment ||
-    (!isSuperAdmin(authUser) && existingPayment.agencyId !== authUser.agencyId)
-  ) {
+  if (!existingPayment || (accessibleAgencyIds && !accessibleAgencyIds.includes(existingPayment.agencyId))) {
     throw new AppError('Payment not found', 404)
   }
 

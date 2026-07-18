@@ -92,7 +92,7 @@ export function AgencyDetailsPage() {
         />
       </div>
 
-      <div className="grid gap-4 xl:grid-cols-3">
+      <div className="grid gap-4 xl:grid-cols-4">
         <SummaryCard
           label="Group Amount"
           value={formatCurrency(agency.summary.totalGroupAmount)}
@@ -106,7 +106,17 @@ export function AgencyDetailsPage() {
         <SummaryCard
           label="Outstanding Balance"
           value={formatCurrency(agency.summary.outstandingBalance)}
-          detail="Phase 1 balance view before advance-credit handling in Phase 2."
+          detail="Current unpaid amount after applied allocations."
+        />
+        <SummaryCard
+          label="Advance Balance"
+          value={formatCurrency(agency.summary.advanceBalance)}
+          detail="Unallocated credit currently held for future groups."
+        />
+        <SummaryCard
+          label="Net Balance"
+          value={formatCurrency(agency.summary.netBalance)}
+          detail="Outstanding balance after deducting available advance credit."
         />
       </div>
 
@@ -279,8 +289,8 @@ export function AgencyDetailsPage() {
       </div>
 
       <Panel
-        title="Phase 1 Notes"
-        description="This phase focuses on hierarchy and agency management only."
+        title="Phase 2 Notes"
+        description="The financial foundation now includes advance-balance semantics and parent-paid branch allocation support."
       >
         <div className="grid gap-4 md:grid-cols-3">
           <div className="rounded-[20px] border border-white/10 bg-white/[0.04] px-4 py-4">
@@ -298,7 +308,7 @@ export function AgencyDetailsPage() {
               Financial Summary
             </div>
             <p className="mt-3 text-sm text-slate-300">
-              The summary uses current group and payment totals only. Advance balance and allocation engine arrive in Phase 2.
+              The summary now separates outstanding balance, advance balance, and net balance for finance-friendly review.
             </p>
           </div>
           <div className="rounded-[20px] border border-white/10 bg-white/[0.04] px-4 py-4">
