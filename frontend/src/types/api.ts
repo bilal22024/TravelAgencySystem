@@ -7,6 +7,11 @@ export type UserRole =
 
 export type AgencyType = 'PARENT' | 'BRANCH'
 
+export type LocationReference = {
+  id: string
+  name: string
+}
+
 export type GroupStatus =
   | 'PLANNED'
   | 'CONFIRMED'
@@ -58,8 +63,10 @@ export type Agency = {
   addressLine1: string | null
   addressLine2: string | null
   city: string | null
+  cityRef: LocationReference | null
   state: string | null
   country: string | null
+  countryRef: LocationReference | null
   postalCode: string | null
   notes: string | null
   isActive: boolean
@@ -117,7 +124,9 @@ export type AgencyLookupItem = {
   agencyType: AgencyType
   category: string | null
   city: string | null
+  cityRef: LocationReference | null
   country: string | null
+  countryRef: LocationReference | null
   isActive: boolean
   parentAgency?: {
     id: string
@@ -146,7 +155,9 @@ export type AgencyBranchSummary = {
   agencyType: AgencyType
   category: string | null
   city: string | null
+  cityRef: LocationReference | null
   country: string | null
+  countryRef: LocationReference | null
   isActive: boolean
   createdAt: string
   updatedAt: string
@@ -653,6 +664,21 @@ export type MeResponse = {
 
 export type CollectionResponse<T> = {
   data: T[]
+}
+
+export type CountryLookupItem = {
+  id: string
+  name: string
+  _count: {
+    cities: number
+  }
+}
+
+export type CityLookupItem = {
+  id: string
+  name: string
+  countryId: string
+  country: LocationReference
 }
 
 export type EntityResponse<T> = {

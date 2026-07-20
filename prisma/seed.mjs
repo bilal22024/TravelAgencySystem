@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { PrismaClient } from '@prisma/client'
+import bcrypt from 'bcryptjs'
 
 const prisma = new PrismaClient()
 const TODAY = new Date('2026-07-13T09:00:00.000Z')
@@ -664,6 +665,49 @@ async function main() {
     },
     orderBy: [{ country: 'asc' }, { city: 'asc' }, { code: 'asc' }],
   })
+  
+  if (seededAgencies.length === 0) {
+  throw new Error('Cannot create the administrator because no agencies exist.')
+}
+
+const adminEmail = (
+  process.env.SEED_ADMIN_EMAIL ?? 'admin@fidanoor.com'
+)
+  .trim()
+  .toLowerCase()
+
+const adminPassword =
+  process.env.SEED_ADMIN_PASSWORD ?? 'Admin@123456'
+
+const adminPasswordHash = await bcrypt.hash(adminPassword, 12)
+
+await prisma.user.upsert({
+  where: {
+    email: adminEmail,
+  },
+
+  update: {
+    agencyId: seededAgencies[0].id,
+    firstName: 'System',
+    lastName: 'Administrator',
+    passwordHash: adminPasswordHash,
+    role: 'SUPER_ADMIN',
+    isActive: true,
+  },
+
+  create: {
+    agencyId: seededAgencies[0].id,
+    firstName: 'System',
+    lastName: 'Administrator',
+    email: adminEmail,
+    phone: null,
+    passwordHash: adminPasswordHash,
+    role: 'SUPER_ADMIN',
+    isActive: true,
+  },
+})
+
+console.log(`Administrator available: ${adminEmail}`)
 
   await Promise.all(
     existingUsers.map((user, index) => {

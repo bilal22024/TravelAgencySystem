@@ -3,19 +3,17 @@
   "private": true,
   "version": "1.0.0",
   "type": "module",
-
-"scripts": {
-  "dev": "tsx watch src/server.ts",
-  "build": "prisma generate --schema=../prisma/schema.prisma && tsc -p tsconfig.build.json",
-  "start": "node dist/server.js",
-  "prisma:generate": "prisma generate --schema=../prisma/schema.prisma",
-  "prisma:migrate:deploy": "prisma migrate deploy --schema=../prisma/schema.prisma",
-  "prisma:seed": "prisma db seed --schema=../prisma/schema.prisma",
-  "lint": "eslint .",
-  "check": "tsc --noEmit",
-  "test": "vitest run"
-},
-  
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "build": "prisma generate --schema=../prisma/schema.prisma && tsc -p tsconfig.build.json",
+    "start": "node dist/server.js",
+    "prisma:generate": "prisma generate --schema=../prisma/schema.prisma",
+    "prisma:migrate:deploy": "prisma migrate deploy --schema=../prisma/schema.prisma",
+    "prisma:seed": "prisma db seed --schema=../prisma/schema.prisma",
+    "lint": "eslint .",
+    "check": "tsc --noEmit",
+    "test": "vitest run"
+  },
   "dependencies": {
     "@prisma/client": "^6.11.1",
     "bcryptjs": "^2.4.3",

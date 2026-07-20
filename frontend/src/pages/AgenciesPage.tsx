@@ -17,35 +17,46 @@ import { PaginationControls } from '@/components/ui/PaginationControls'
 import { Panel } from '@/components/ui/Panel'
 import { SearchInput } from '@/components/ui/SearchInput'
 import { StatusBadge } from '@/components/ui/StatusBadge'
-import { useDebouncedSearch } from '@/hooks/useDebouncedSearch'
+
+type AgencyFilterState = {
+  search: string
+  isActive: 'true' | 'false' | ''
+  agencyType: '' | 'PARENT' | 'BRANCH'
+  category: string
+  sortBy: 'name' | 'code' | 'city' | 'country' | 'agencyType' | 'category' | 'createdAt' | 'updatedAt'
+  sortOrder: 'asc' | 'desc'
+}
+
+const defaultAgencyFilters: AgencyFilterState = {
+  search: '',
+  isActive: '',
+  agencyType: '',
+  category: '',
+  sortBy: 'createdAt',
+  sortOrder: 'desc',
+}
 
 export function AgenciesPage() {
   const [selectedAgencyId, setSelectedAgencyId] = useState<string | null>(null)
-  const [isActive, setIsActive] = useState<'true' | 'false' | ''>('')
-  const [agencyType, setAgencyType] = useState<'' | 'PARENT' | 'BRANCH'>('')
-  const [category, setCategory] = useState('')
-  const [sortBy, setSortBy] = useState<
-    'name' | 'code' | 'city' | 'country' | 'agencyType' | 'category' | 'createdAt' | 'updatedAt'
-  >(
-    'createdAt',
-  )
-  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc')
+  const [pendingFilters, setPendingFilters] = useState<AgencyFilterState>(defaultAgencyFilters)
+  const [appliedFilters, setAppliedFilters] = useState<AgencyFilterState>(defaultAgencyFilters)
   const [page, setPage] = useState(1)
+  const [formResetToken, setFormResetToken] = useState(0)
+  const [isFormDirty, setIsFormDirty] = useState(false)
   const user = useAuthStore((state) => state.user)
-  const { searchText, debouncedSearchText, updateSearchText } = useDebouncedSearch()
 
   const agencyListParams = useMemo(
     () => ({
       page,
       pageSize: 10,
-      search: debouncedSearchText || undefined,
-      isActive: isActive || undefined,
-      agencyType: agencyType || undefined,
-      category: category.trim() || undefined,
-      sortBy,
-      sortOrder,
+      search: appliedFilters.search.trim() || undefined,
+      isActive: appliedFilters.isActive || undefined,
+      agencyType: appliedFilters.agencyType || undefined,
+      category: appliedFilters.category.trim() || undefined,
+      sortBy: appliedFilters.sortBy,
+      sortOrder: appliedFilters.sortOrder,
     }),
-    [agencyType, category, debouncedSearchText, isActive, page, sortBy, sortOrder],
+    [appliedFilters, page],
   )
 
   const agenciesQuery = useAgenciesQuery(agencyListParams)
@@ -62,6 +73,45 @@ export function AgenciesPage() {
 
   const canManageAgencies = user?.role === 'SUPER_ADMIN'
   const selectedAgency = selectedAgencyQuery.data ?? null
+  const hasPendingFilterChanges = JSON.stringify(pendingFilters) !== JSON.stringify(appliedFilters)
+  const appliedFilterSummary = [
+    appliedFilters.search.trim() ? `Search: ${appliedFilters.search.trim()}` : null,
+    appliedFilters.agencyType
+      ? `Type: ${appliedFilters.agencyType === 'PARENT' ? 'Parent' : 'Branch'}`
+      : null,
+    appliedFilters.category.trim() ? `Category: ${appliedFilters.category.trim()}` : null,
+    appliedFilters.isActive
+      ? `Status: ${appliedFilters.isActive === 'true' ? 'Active only' : 'Inactive only'}`
+      : null,
+    `Sort: ${appliedFilters.sortBy} ${appliedFilters.sortOrder}`,
+  ]
+    .filter(Boolean)
+    .join(' · ')
+
+  function applyFilters() {
+    setAppliedFilters(pendingFilters)
+    setPage(1)
+  }
+
+  function resetFilters() {
+    setPendingFilters(defaultAgencyFilters)
+    setAppliedFilters(defaultAgencyFilters)
+    setPage(1)
+  }
+
+  function handleCreateBlankAgency() {
+    if (
+      isFormDirty &&
+      !window.confirm(
+        'You have unsaved changes. Do you want to discard them and create a new agency?',
+      )
+    ) {
+      return
+    }
+
+    setSelectedAgencyId(null)
+    setFormResetToken((current) => current + 1)
+  }
 
   if (agenciesQuery.isPending && !agenciesQuery.data) {
     return <LoadingBlock label="Loading agency roster..." />
@@ -94,87 +144,121 @@ export function AgenciesPage() {
               <button
                 className="app-button-secondary h-10"
                 type="button"
-                onClick={() => setSelectedAgencyId(null)}
+                onClick={handleCreateBlankAgency}
               >
-                New agency
+                Add New Agency
               </button>
             ) : null
           }
         >
-          <div className="grid gap-3 border-b border-white/10 pb-5 md:grid-cols-4">
-            <SearchInput
-              className="md:col-span-2"
-              placeholder="Search by name, country, city, or agent number"
-              value={searchText}
-              onChange={(value) => {
-                updateSearchText(value)
-                setPage(1)
-              }}
-            />
-            <select
-              className="app-field"
-              value={agencyType}
-              onChange={(event) => {
-                setAgencyType(event.target.value as '' | 'PARENT' | 'BRANCH')
-                setPage(1)
-              }}
-            >
-              <option value="">All types</option>
-              <option value="PARENT">Parent agencies</option>
-              <option value="BRANCH">Branch agencies</option>
-            </select>
-            <input
-              className="app-field"
-              placeholder="Category"
-              value={category}
-              onChange={(event) => {
-                setCategory(event.target.value)
-                setPage(1)
-              }}
-            />
-            <select
-              className="app-field"
-              value={isActive}
-              onChange={(event) => {
-                setIsActive(event.target.value as 'true' | 'false' | '')
-                setPage(1)
-              }}
-            >
-              <option value="">All statuses</option>
-              <option value="true">Active only</option>
-              <option value="false">Inactive only</option>
-            </select>
-            <div className="grid grid-cols-2 gap-3">
+          <form
+            className="space-y-3 border-b border-white/10 pb-5"
+            onSubmit={(event) => {
+              event.preventDefault()
+              applyFilters()
+            }}
+          >
+            <div className="grid gap-3 md:grid-cols-4">
+              <SearchInput
+                className="md:col-span-2"
+                placeholder="Search by name, country, city, or agent number"
+                value={pendingFilters.search}
+                onChange={(value) =>
+                  setPendingFilters((current) => ({
+                    ...current,
+                    search: value,
+                  }))
+                }
+              />
               <select
                 className="app-field"
-                value={sortBy}
-                onChange={(event) => {
-                  setSortBy(event.target.value as typeof sortBy)
-                  setPage(1)
-                }}
+                value={pendingFilters.agencyType}
+                onChange={(event) =>
+                  setPendingFilters((current) => ({
+                    ...current,
+                    agencyType: event.target.value as AgencyFilterState['agencyType'],
+                  }))
+                }
               >
-                <option value="createdAt">Newest</option>
-                <option value="updatedAt">Recently updated</option>
-                <option value="name">Name</option>
-                <option value="code">Code</option>
-                <option value="agencyType">Agency type</option>
-                <option value="category">Category</option>
-                <option value="city">City</option>
-                <option value="country">Country</option>
+                <option value="">All types</option>
+                <option value="PARENT">Parent agencies</option>
+                <option value="BRANCH">Branch agencies</option>
               </select>
+              <input
+                className="app-field"
+                placeholder="Category"
+                value={pendingFilters.category}
+                onChange={(event) =>
+                  setPendingFilters((current) => ({
+                    ...current,
+                    category: event.target.value,
+                  }))
+                }
+              />
               <select
                 className="app-field"
-                value={sortOrder}
-                onChange={(event) => {
-                  setSortOrder(event.target.value as 'asc' | 'desc')
-                  setPage(1)
-                }}
+                value={pendingFilters.isActive}
+                onChange={(event) =>
+                  setPendingFilters((current) => ({
+                    ...current,
+                    isActive: event.target.value as AgencyFilterState['isActive'],
+                  }))
+                }
               >
-                <option value="desc">Desc</option>
-                <option value="asc">Asc</option>
+                <option value="">All statuses</option>
+                <option value="true">Active only</option>
+                <option value="false">Inactive only</option>
               </select>
+              <div className="grid grid-cols-2 gap-3">
+                <select
+                  className="app-field"
+                  value={pendingFilters.sortBy}
+                  onChange={(event) =>
+                    setPendingFilters((current) => ({
+                      ...current,
+                      sortBy: event.target.value as AgencyFilterState['sortBy'],
+                    }))
+                  }
+                >
+                  <option value="createdAt">Newest</option>
+                  <option value="updatedAt">Recently updated</option>
+                  <option value="name">Name</option>
+                  <option value="code">Code</option>
+                  <option value="agencyType">Agency type</option>
+                  <option value="category">Category</option>
+                  <option value="city">City</option>
+                  <option value="country">Country</option>
+                </select>
+                <select
+                  className="app-field"
+                  value={pendingFilters.sortOrder}
+                  onChange={(event) =>
+                    setPendingFilters((current) => ({
+                      ...current,
+                      sortOrder: event.target.value as AgencyFilterState['sortOrder'],
+                    }))
+                  }
+                >
+                  <option value="desc">Desc</option>
+                  <option value="asc">Asc</option>
+                </select>
+              </div>
             </div>
-          </div>
+            <div className="flex flex-wrap items-center gap-3">
+              <button className="app-button-secondary h-10" type="submit">
+                Apply Filters
+              </button>
+              <button className="app-button-ghost h-10" type="button" onClick={resetFilters}>
+                Reset Filters
+              </button>
+              <p className="text-sm text-slate-400">{appliedFilterSummary}</p>
+            </div>
+            {hasPendingFilterChanges ? (
+              <p className="text-sm text-amber-200">
+                Filters changed. Click Apply Filters to update results.
+              </p>
+            ) : null}
+          </form>
 
           <div className="space-y-3 pt-5">
             {agencies.length === 0 ? (
@@ -285,18 +369,23 @@ export function AgenciesPage() {
               ) : (
                 <AgencyForm
                   agency={selectedAgency}
+                  canManageLocations={canManageAgencies}
                   disabled={
                     createAgencyMutation.isPending ||
                     updateAgencyMutation.isPending ||
                     deleteAgencyMutation.isPending
                   }
-                  onSubmit={(payload) => {
+                  resetToken={formResetToken}
+                  onDirtyChange={setIsFormDirty}
+                  onSubmit={async (payload) => {
                     if (selectedAgency) {
-                      updateAgencyMutation.mutate({ id: selectedAgency.id, payload })
+                      await updateAgencyMutation.mutateAsync({ id: selectedAgency.id, payload })
                       return
                     }
 
-                    createAgencyMutation.mutate(payload)
+                    await createAgencyMutation.mutateAsync(payload)
+                    setFormResetToken((current) => current + 1)
+                    setSelectedAgencyId(null)
                   }}
                 />
               )}

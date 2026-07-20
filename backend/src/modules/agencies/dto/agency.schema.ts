@@ -48,6 +48,8 @@ const agencyBaseSchema = z.object({
   contactPhone: optionalTrimmedString(30),
   addressLine1: optionalTrimmedString(255),
   addressLine2: optionalTrimmedString(255),
+  countryId: uuidSchema.optional(),
+  cityId: uuidSchema.optional(),
   city: optionalTrimmedString(120),
   state: optionalTrimmedString(120),
   country: optionalTrimmedString(120),
@@ -58,6 +60,27 @@ const agencyBaseSchema = z.object({
   emailAddresses: z.array(agencyEmailSchema).max(10).default([]),
   documents: z.array(agencyDocumentSchema).max(10).default([]),
 })
+
+const nullableOptionalString = (maxLength: number) => optionalTrimmedString(maxLength).nullable()
+const nullableEmailSchema = z.string().trim().email().max(255).optional().nullable()
+const updateAgencyBaseSchema = agencyBaseSchema
+  .extend({
+    parentAgencyId: uuidSchema.nullable().optional(),
+    category: nullableOptionalString(120),
+    primaryContactPerson: nullableOptionalString(120),
+    contactEmail: nullableEmailSchema,
+    contactPhone: nullableOptionalString(30),
+    addressLine1: nullableOptionalString(255),
+    addressLine2: nullableOptionalString(255),
+    countryId: uuidSchema.nullable().optional(),
+    cityId: uuidSchema.nullable().optional(),
+    city: nullableOptionalString(120),
+    state: nullableOptionalString(120),
+    country: nullableOptionalString(120),
+    postalCode: nullableOptionalString(20),
+    notes: nullableOptionalString(2000),
+  })
+  .partial()
 
 export const agencyIdParamsSchema = z.object({
   id: uuidSchema,
@@ -106,9 +129,17 @@ export const createAgencySchema = agencyBaseSchema.superRefine((value, context) 
       message: 'A parent agency cannot be linked under another agency.',
     })
   }
+
+  if (value.cityId && !value.countryId && !value.country) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['countryId'],
+      message: 'Select a country before selecting a city.',
+    })
+  }
 })
 
-export const updateAgencySchema = agencyBaseSchema.partial().superRefine((value, context) => {
+export const updateAgencySchema = updateAgencyBaseSchema.superRefine((value, context) => {
   if (value.agencyType === 'BRANCH' && value.parentAgencyId === undefined) {
     context.addIssue({
       code: z.ZodIssueCode.custom,
@@ -124,11 +155,20 @@ export const updateAgencySchema = agencyBaseSchema.partial().superRefine((value,
       message: 'A parent agency cannot be linked under another agency.',
     })
   }
+
+  if (value.cityId && value.countryId === undefined && value.country === undefined) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['countryId'],
+      message: 'Select a country before selecting a city.',
+    })
+  }
 })
 
 export const agencySchema = createAgencySchema
 
 export type AgencyInput = z.infer<typeof agencyBaseSchema>
+export type UpdateAgencyInput = z.infer<typeof updateAgencySchema>
 export type AgencyListQuery = z.infer<typeof agencyListQuerySchema>
 export type AgencyLookupQuery = z.infer<typeof agencyLookupQuerySchema>
 export type AgencySummaryQuery = z.infer<typeof agencySummaryQuerySchema>

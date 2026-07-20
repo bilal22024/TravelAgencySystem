@@ -14,14 +14,13 @@ import { PaginationControls } from '@/components/ui/PaginationControls'
 import { Panel } from '@/components/ui/Panel'
 import { SearchInput } from '@/components/ui/SearchInput'
 import { StatusBadge } from '@/components/ui/StatusBadge'
-import { useDebouncedSearch } from '@/hooks/useDebouncedSearch'
 import { getApiErrorMessage } from '@/lib/api-client'
 import { formatCurrency, formatDate, formatNumber } from '@/lib/format'
 
 const pageSizeOptions = [10, 25, 50, 100, 250, 500] as const
 
 function normalizeAgencyField(value: string | null | undefined) {
-  return value?.trim() || 'Unspecified'
+  return value?.trim() || 'Not assigned'
 }
 
 function normalizeSearchValue(value: string) {
@@ -54,23 +53,20 @@ function getLifecycleTone(status: string) {
   }
 }
 
-export function GroupsPage() {
-  const [selectedCountry, setSelectedCountry] = useState('')
-  const [selectedCity, setSelectedCity] = useState('')
-  const [selectedAgencyId, setSelectedAgencyId] = useState('')
-  const [groupStatus, setGroupStatus] = useState<
-    '' | 'PLANNED' | 'CONFIRMED' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED'
-  >('')
-  const [paymentStatus, setPaymentStatus] = useState<
-    '' | 'UNPAID' | 'PARTIALLY_PAID' | 'FULLY_PAID'
-  >('')
-  const [minPassengers, setMinPassengers] = useState('')
-  const [maxPassengers, setMaxPassengers] = useState('')
-  const [minAmount, setMinAmount] = useState('')
-  const [maxAmount, setMaxAmount] = useState('')
-  const [createdDateFrom, setCreatedDateFrom] = useState('')
-  const [createdDateTo, setCreatedDateTo] = useState('')
-  const [sortBy, setSortBy] = useState<
+type GroupFilterState = {
+  search: string
+  selectedCountry: string
+  selectedCity: string
+  selectedAgencyId: string
+  groupStatus: '' | 'PLANNED' | 'CONFIRMED' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED'
+  paymentStatus: '' | 'UNPAID' | 'PARTIALLY_PAID' | 'FULLY_PAID'
+  minPassengers: string
+  maxPassengers: string
+  minAmount: string
+  maxAmount: string
+  createdDateFrom: string
+  createdDateTo: string
+  sortBy:
     | 'createdAt'
     | 'code'
     | 'name'
@@ -80,13 +76,33 @@ export function GroupsPage() {
     | 'amountPerPax'
     | 'totalAmount'
     | 'outstandingBalance'
-  >('createdAt')
-  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc')
+  sortOrder: 'asc' | 'desc'
+}
+
+const defaultGroupFilters: GroupFilterState = {
+  search: '',
+  selectedCountry: '',
+  selectedCity: '',
+  selectedAgencyId: '',
+  groupStatus: '',
+  paymentStatus: '',
+  minPassengers: '',
+  maxPassengers: '',
+  minAmount: '',
+  maxAmount: '',
+  createdDateFrom: '',
+  createdDateTo: '',
+  sortBy: 'createdAt',
+  sortOrder: 'desc',
+}
+
+export function GroupsPage() {
+  const [pendingFilters, setPendingFilters] = useState<GroupFilterState>(defaultGroupFilters)
+  const [appliedFilters, setAppliedFilters] = useState<GroupFilterState>(defaultGroupFilters)
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState<(typeof pageSizeOptions)[number]>(25)
   const [actionMessage, setActionMessage] = useState('')
   const [actionErrorMessage, setActionErrorMessage] = useState('')
-  const { searchText, debouncedSearchText, updateSearchText } = useDebouncedSearch()
 
   const agenciesQuery = useAgenciesQuery({
     page: 1,
@@ -98,20 +114,20 @@ export function GroupsPage() {
     {
       page,
       pageSize,
-      search: normalizeSearchValue(debouncedSearchText) || undefined,
-      agencyId: selectedAgencyId || undefined,
-      country: selectedCountry || undefined,
-      city: selectedCity || undefined,
-      status: groupStatus || undefined,
-      paymentStatus: paymentStatus || undefined,
-      minPassengers: minPassengers ? Number(minPassengers) : undefined,
-      maxPassengers: maxPassengers ? Number(maxPassengers) : undefined,
-      minAmount: minAmount ? Number(minAmount) : undefined,
-      maxAmount: maxAmount ? Number(maxAmount) : undefined,
-      createdDateFrom: createdDateFrom || undefined,
-      createdDateTo: createdDateTo || undefined,
-      sortBy,
-      sortOrder,
+      search: normalizeSearchValue(appliedFilters.search) || undefined,
+      agencyId: appliedFilters.selectedAgencyId || undefined,
+      country: appliedFilters.selectedCountry || undefined,
+      city: appliedFilters.selectedCity || undefined,
+      status: appliedFilters.groupStatus || undefined,
+      paymentStatus: appliedFilters.paymentStatus || undefined,
+      minPassengers: appliedFilters.minPassengers ? Number(appliedFilters.minPassengers) : undefined,
+      maxPassengers: appliedFilters.maxPassengers ? Number(appliedFilters.maxPassengers) : undefined,
+      minAmount: appliedFilters.minAmount ? Number(appliedFilters.minAmount) : undefined,
+      maxAmount: appliedFilters.maxAmount ? Number(appliedFilters.maxAmount) : undefined,
+      createdDateFrom: appliedFilters.createdDateFrom || undefined,
+      createdDateTo: appliedFilters.createdDateTo || undefined,
+      sortBy: appliedFilters.sortBy,
+      sortOrder: appliedFilters.sortOrder,
     },
     !agenciesQuery.isError,
   )
@@ -133,12 +149,14 @@ export function GroupsPage() {
       new Set(
         agencies
           .filter((agency) =>
-            selectedCountry ? normalizeAgencyField(agency.country) === selectedCountry : true,
+            pendingFilters.selectedCountry
+              ? normalizeAgencyField(agency.country) === pendingFilters.selectedCountry
+              : true,
           )
           .map((agency) => normalizeAgencyField(agency.city)),
       ),
     ).sort((left, right) => left.localeCompare(right))
-  }, [agencies, selectedCountry])
+  }, [agencies, pendingFilters.selectedCountry])
 
   const filteredAgencies = useMemo(() => {
     return agencies.filter((agency) => {
@@ -146,29 +164,74 @@ export function GroupsPage() {
       const agencyCity = normalizeAgencyField(agency.city)
 
       return (
-        (!selectedCountry || agencyCountry === selectedCountry) &&
-        (!selectedCity || agencyCity === selectedCity)
+        (!pendingFilters.selectedCountry || agencyCountry === pendingFilters.selectedCountry) &&
+        (!pendingFilters.selectedCity || agencyCity === pendingFilters.selectedCity)
       )
     })
-  }, [agencies, selectedCity, selectedCountry])
+  }, [agencies, pendingFilters.selectedCity, pendingFilters.selectedCountry])
 
   useEffect(() => {
-    if (selectedCountry && !countryOptions.includes(selectedCountry)) {
-      setSelectedCountry('')
+    if (pendingFilters.selectedCountry && !countryOptions.includes(pendingFilters.selectedCountry)) {
+      setPendingFilters((current) => ({
+        ...current,
+        selectedCountry: '',
+        selectedCity: '',
+        selectedAgencyId: '',
+      }))
     }
-  }, [countryOptions, selectedCountry])
+  }, [countryOptions, pendingFilters.selectedCountry])
 
   useEffect(() => {
-    if (selectedCity && !cityOptions.includes(selectedCity)) {
-      setSelectedCity('')
+    if (pendingFilters.selectedCity && !cityOptions.includes(pendingFilters.selectedCity)) {
+      setPendingFilters((current) => ({
+        ...current,
+        selectedCity: '',
+        selectedAgencyId: '',
+      }))
     }
-  }, [cityOptions, selectedCity])
+  }, [cityOptions, pendingFilters.selectedCity])
 
   useEffect(() => {
-    if (selectedAgencyId && !filteredAgencies.some((agency) => agency.id === selectedAgencyId)) {
-      setSelectedAgencyId('')
+    if (
+      pendingFilters.selectedAgencyId &&
+      !filteredAgencies.some((agency) => agency.id === pendingFilters.selectedAgencyId)
+    ) {
+      setPendingFilters((current) => ({
+        ...current,
+        selectedAgencyId: '',
+      }))
     }
-  }, [filteredAgencies, selectedAgencyId])
+  }, [filteredAgencies, pendingFilters.selectedAgencyId])
+
+  const hasPendingFilterChanges =
+    JSON.stringify(pendingFilters) !== JSON.stringify(appliedFilters)
+  const appliedFilterSummary = [
+    appliedFilters.search.trim() ? `Search: ${appliedFilters.search.trim()}` : null,
+    appliedFilters.selectedCountry ? `Country: ${appliedFilters.selectedCountry}` : null,
+    appliedFilters.selectedCity ? `City: ${appliedFilters.selectedCity}` : null,
+    appliedFilters.selectedAgencyId
+      ? `Agency: ${
+          agencies.find((agency) => agency.id === appliedFilters.selectedAgencyId)?.name ?? 'Selected'
+        }`
+      : null,
+    appliedFilters.groupStatus ? `Lifecycle: ${appliedFilters.groupStatus.replace(/_/g, ' ')}` : null,
+    appliedFilters.paymentStatus
+      ? `Payment: ${appliedFilters.paymentStatus.replace(/_/g, ' ')}`
+      : null,
+  ]
+    .filter(Boolean)
+    .join(' · ')
+
+  function applyFilters() {
+    setAppliedFilters(pendingFilters)
+    setPage(1)
+  }
+
+  function resetFilters() {
+    setPendingFilters(defaultGroupFilters)
+    setAppliedFilters(defaultGroupFilters)
+    setPage(1)
+  }
 
   const summary = useMemo(() => {
     return groups.reduce(
@@ -232,27 +295,41 @@ export function GroupsPage() {
         </div>
       ) : null}
 
-      <Panel title="Filters" description="Search instantly while typing and combine location, lifecycle, financial, and date filters without loading unnecessary records.">
+      <Panel
+        title="Filters"
+        description="Stage the search, location, lifecycle, financial, and date filters first, then apply them together."
+      >
+        <form
+          className="space-y-4"
+          onSubmit={(event) => {
+            event.preventDefault()
+            applyFilters()
+          }}
+        >
         <div className="grid gap-4 xl:grid-cols-12">
           <SearchInput
             className="xl:col-span-4"
             placeholder="Search by Group Number, Group Name, Agency, Country, or City"
-            value={searchText}
-            onChange={(value) => {
-              updateSearchText(value)
-              setPage(1)
-            }}
+            value={pendingFilters.search}
+            onChange={(value) =>
+              setPendingFilters((current) => ({
+                ...current,
+                search: value,
+              }))
+            }
           />
 
           <select
             className="app-field xl:col-span-2"
-            value={selectedCountry}
-            onChange={(event) => {
-              setSelectedCountry(event.target.value)
-              setSelectedCity('')
-              setSelectedAgencyId('')
-              setPage(1)
-            }}
+            value={pendingFilters.selectedCountry}
+            onChange={(event) =>
+              setPendingFilters((current) => ({
+                ...current,
+                selectedCountry: event.target.value,
+                selectedCity: '',
+                selectedAgencyId: '',
+              }))
+            }
           >
             <option value="">All countries</option>
             {countryOptions.map((country) => (
@@ -264,13 +341,15 @@ export function GroupsPage() {
 
           <select
             className="app-field disabled:cursor-not-allowed disabled:opacity-60 xl:col-span-2"
-            value={selectedCity}
-            disabled={!selectedCountry}
-            onChange={(event) => {
-              setSelectedCity(event.target.value)
-              setSelectedAgencyId('')
-              setPage(1)
-            }}
+            value={pendingFilters.selectedCity}
+            disabled={!pendingFilters.selectedCountry}
+            onChange={(event) =>
+              setPendingFilters((current) => ({
+                ...current,
+                selectedCity: event.target.value,
+                selectedAgencyId: '',
+              }))
+            }
           >
             <option value="">All cities</option>
             {cityOptions.map((city) => (
@@ -282,11 +361,13 @@ export function GroupsPage() {
 
           <select
             className="app-field xl:col-span-2"
-            value={selectedAgencyId}
-            onChange={(event) => {
-              setSelectedAgencyId(event.target.value)
-              setPage(1)
-            }}
+            value={pendingFilters.selectedAgencyId}
+            onChange={(event) =>
+              setPendingFilters((current) => ({
+                ...current,
+                selectedAgencyId: event.target.value,
+              }))
+            }
           >
             <option value="">All agencies</option>
             {filteredAgencies.map((agency) => (
@@ -298,11 +379,13 @@ export function GroupsPage() {
 
           <select
             className="app-field xl:col-span-2"
-            value={groupStatus}
-            onChange={(event) => {
-              setGroupStatus(event.target.value as typeof groupStatus)
-              setPage(1)
-            }}
+            value={pendingFilters.groupStatus}
+            onChange={(event) =>
+              setPendingFilters((current) => ({
+                ...current,
+                groupStatus: event.target.value as GroupFilterState['groupStatus'],
+              }))
+            }
           >
             <option value="">All lifecycle statuses</option>
             <option value="PLANNED">Planned</option>
@@ -314,11 +397,13 @@ export function GroupsPage() {
 
           <select
             className="app-field xl:col-span-2"
-            value={paymentStatus}
-            onChange={(event) => {
-              setPaymentStatus(event.target.value as typeof paymentStatus)
-              setPage(1)
-            }}
+            value={pendingFilters.paymentStatus}
+            onChange={(event) =>
+              setPendingFilters((current) => ({
+                ...current,
+                paymentStatus: event.target.value as GroupFilterState['paymentStatus'],
+              }))
+            }
           >
             <option value="">All payment statuses</option>
             <option value="UNPAID">Unpaid</option>
@@ -331,11 +416,13 @@ export function GroupsPage() {
             min={1}
             placeholder="Min passengers"
             type="number"
-            value={minPassengers}
-            onChange={(event) => {
-              setMinPassengers(event.target.value)
-              setPage(1)
-            }}
+            value={pendingFilters.minPassengers}
+            onChange={(event) =>
+              setPendingFilters((current) => ({
+                ...current,
+                minPassengers: event.target.value,
+              }))
+            }
           />
 
           <input
@@ -343,11 +430,13 @@ export function GroupsPage() {
             min={1}
             placeholder="Max passengers"
             type="number"
-            value={maxPassengers}
-            onChange={(event) => {
-              setMaxPassengers(event.target.value)
-              setPage(1)
-            }}
+            value={pendingFilters.maxPassengers}
+            onChange={(event) =>
+              setPendingFilters((current) => ({
+                ...current,
+                maxPassengers: event.target.value,
+              }))
+            }
           />
 
           <input
@@ -356,11 +445,13 @@ export function GroupsPage() {
             placeholder="Min amount"
             step="0.01"
             type="number"
-            value={minAmount}
-            onChange={(event) => {
-              setMinAmount(event.target.value)
-              setPage(1)
-            }}
+            value={pendingFilters.minAmount}
+            onChange={(event) =>
+              setPendingFilters((current) => ({
+                ...current,
+                minAmount: event.target.value,
+              }))
+            }
           />
 
           <input
@@ -369,40 +460,48 @@ export function GroupsPage() {
             placeholder="Max amount"
             step="0.01"
             type="number"
-            value={maxAmount}
-            onChange={(event) => {
-              setMaxAmount(event.target.value)
-              setPage(1)
-            }}
+            value={pendingFilters.maxAmount}
+            onChange={(event) =>
+              setPendingFilters((current) => ({
+                ...current,
+                maxAmount: event.target.value,
+              }))
+            }
           />
 
           <input
             className="rounded-2xl border border-white/10 bg-[rgba(7,15,27,0.55)] px-4 py-3 text-sm text-white outline-none transition focus:border-cyan-300/50 xl:col-span-2"
             type="date"
-            value={createdDateFrom}
-            onChange={(event) => {
-              setCreatedDateFrom(event.target.value)
-              setPage(1)
-            }}
+            value={pendingFilters.createdDateFrom}
+            onChange={(event) =>
+              setPendingFilters((current) => ({
+                ...current,
+                createdDateFrom: event.target.value,
+              }))
+            }
           />
 
           <input
             className="rounded-2xl border border-white/10 bg-[rgba(7,15,27,0.55)] px-4 py-3 text-sm text-white outline-none transition focus:border-cyan-300/50 xl:col-span-2"
             type="date"
-            value={createdDateTo}
-            onChange={(event) => {
-              setCreatedDateTo(event.target.value)
-              setPage(1)
-            }}
+            value={pendingFilters.createdDateTo}
+            onChange={(event) =>
+              setPendingFilters((current) => ({
+                ...current,
+                createdDateTo: event.target.value,
+              }))
+            }
           />
 
           <select
             className="rounded-2xl border border-white/10 bg-[rgba(7,15,27,0.55)] px-4 py-3 text-sm text-white outline-none transition focus:border-cyan-300/50 xl:col-span-2"
-            value={sortBy}
-            onChange={(event) => {
-              setSortBy(event.target.value as typeof sortBy)
-              setPage(1)
-            }}
+            value={pendingFilters.sortBy}
+            onChange={(event) =>
+              setPendingFilters((current) => ({
+                ...current,
+                sortBy: event.target.value as GroupFilterState['sortBy'],
+              }))
+            }
           >
             <option value="createdAt">Created Date</option>
             <option value="code">Group Number</option>
@@ -417,43 +516,41 @@ export function GroupsPage() {
 
           <select
             className="rounded-2xl border border-white/10 bg-[rgba(7,15,27,0.55)] px-4 py-3 text-sm text-white outline-none transition focus:border-cyan-300/50 xl:col-span-2"
-            value={sortOrder}
-            onChange={(event) => {
-              setSortOrder(event.target.value as 'asc' | 'desc')
-              setPage(1)
-            }}
+            value={pendingFilters.sortOrder}
+            onChange={(event) =>
+              setPendingFilters((current) => ({
+                ...current,
+                sortOrder: event.target.value as GroupFilterState['sortOrder'],
+              }))
+            }
           >
             <option value="desc">Descending</option>
             <option value="asc">Ascending</option>
           </select>
 
-          <div className="xl:col-span-2">
+          <div className="xl:col-span-4 flex flex-wrap items-center gap-3">
+            <button className="app-button-secondary h-11" type="submit">
+              Apply Filters
+            </button>
             <button
-              className="inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-semibold text-slate-100 transition hover:bg-white/10"
+              className="inline-flex items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-semibold text-slate-100 transition hover:bg-white/10"
               type="button"
-              onClick={() => {
-                updateSearchText('')
-                setSelectedCountry('')
-                setSelectedCity('')
-                setSelectedAgencyId('')
-                setGroupStatus('')
-                setPaymentStatus('')
-                setMinPassengers('')
-                setMaxPassengers('')
-                setMinAmount('')
-                setMaxAmount('')
-                setCreatedDateFrom('')
-                setCreatedDateTo('')
-                setSortBy('createdAt')
-                setSortOrder('desc')
-                setPage(1)
-              }}
+              onClick={resetFilters}
             >
               <FilterX className="h-4 w-4" />
-              Clear Filters
+              Reset Filters
             </button>
+            <p className="text-sm text-slate-400">
+              {appliedFilterSummary || 'No filters applied. Results show the default view.'}
+            </p>
           </div>
         </div>
+        {hasPendingFilterChanges ? (
+          <p className="text-sm text-amber-200">
+            Filters changed. Click Apply Filters to update the list and summaries.
+          </p>
+        ) : null}
+        </form>
       </Panel>
 
       <div className="grid gap-4 xl:grid-cols-4">
@@ -565,9 +662,9 @@ export function GroupsPage() {
                       </div>
                     </td>
                     <td className="border-y border-white/10 bg-white/[0.04] px-4 py-4 text-slate-300">
-                      {(group.agency?.country ?? 'Unspecified') +
+                      {normalizeAgencyField(group.agency?.country) +
                         ' / ' +
-                        (group.agency?.city ?? 'Unspecified')}
+                        normalizeAgencyField(group.agency?.city)}
                     </td>
                     <td className="border-y border-white/10 bg-white/[0.04] px-4 py-4">
                       <StatusBadge

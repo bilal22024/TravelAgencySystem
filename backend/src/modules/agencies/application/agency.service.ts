@@ -8,6 +8,7 @@ import type {
   AgencyListQuery,
   AgencyLookupQuery,
   AgencySummaryQuery,
+  UpdateAgencyInput,
 } from '../dto/agency.schema.js'
 
 function isSuperAdmin(user: AuthenticatedUser) {
@@ -21,6 +22,19 @@ const agencyListInclude = {
       name: true,
       code: true,
       agencyType: true,
+    },
+  },
+  countryRecord: {
+    select: {
+      id: true,
+      name: true,
+    },
+  },
+  cityRecord: {
+    select: {
+      id: true,
+      name: true,
+      countryId: true,
     },
   },
   _count: {
@@ -40,6 +54,19 @@ const agencyDetailInclude = {
       category: true,
     },
   },
+  countryRecord: {
+    select: {
+      id: true,
+      name: true,
+    },
+  },
+  cityRecord: {
+    select: {
+      id: true,
+      name: true,
+      countryId: true,
+    },
+  },
   branches: {
     orderBy: {
       name: 'asc',
@@ -52,6 +79,19 @@ const agencyDetailInclude = {
       category: true,
       city: true,
       country: true,
+      countryRecord: {
+        select: {
+          id: true,
+          name: true,
+        },
+      },
+      cityRecord: {
+        select: {
+          id: true,
+          name: true,
+          countryId: true,
+        },
+      },
       isActive: true,
       createdAt: true,
       updatedAt: true,
@@ -94,6 +134,26 @@ function roundAmount(value: number | Prisma.Decimal | null | undefined) {
   return Number((Number(value ?? 0) || 0).toFixed(2))
 }
 
+function normalizeTextValue(value: string | null | undefined) {
+  return value?.trim() || null
+}
+
+function serializeLocationReference(record: { id: string; name: string } | null | undefined) {
+  return record
+    ? {
+        id: record.id,
+        name: record.name,
+      }
+    : null
+}
+
+type AgencyLocationInput = {
+  countryId?: string | null
+  cityId?: string | null
+  country?: string | null
+  city?: string | null
+}
+
 function normalizePhoneNumbers(phoneNumbers: AgencyInput['phoneNumbers']) {
   return phoneNumbers.map((phoneNumber, index) => ({
     label: phoneNumber.label?.trim() || undefined,
@@ -123,8 +183,28 @@ function normalizeDocuments(documents: AgencyInput['documents']) {
 
 function serializeAgencyListRecord(agency: AgencyListRecord) {
   return {
-    ...agency,
+    id: agency.id,
+    parentAgencyId: agency.parentAgencyId,
+    name: agency.name,
+    code: agency.code,
+    agencyType: agency.agencyType,
+    category: agency.category,
     openingBalance: roundAmount(agency.openingBalance),
+    primaryContactPerson: agency.primaryContactPerson,
+    contactEmail: agency.contactEmail,
+    contactPhone: agency.contactPhone,
+    addressLine1: agency.addressLine1,
+    addressLine2: agency.addressLine2,
+    city: agency.city,
+    cityRef: serializeLocationReference(agency.cityRecord),
+    state: agency.state,
+    country: agency.country,
+    countryRef: serializeLocationReference(agency.countryRecord),
+    postalCode: agency.postalCode,
+    notes: agency.notes,
+    isActive: agency.isActive,
+    createdAt: agency.createdAt,
+    updatedAt: agency.updatedAt,
     parentAgency: agency.parentAgency,
     branchCount: agency._count.branches,
   }
@@ -144,9 +224,34 @@ function serializeAgencyDetailRecord(
   },
 ) {
   return {
-    ...agency,
+    id: agency.id,
+    parentAgencyId: agency.parentAgencyId,
+    name: agency.name,
+    code: agency.code,
+    agencyType: agency.agencyType,
+    category: agency.category,
     openingBalance: roundAmount(agency.openingBalance),
+    primaryContactPerson: agency.primaryContactPerson,
+    contactEmail: agency.contactEmail,
+    contactPhone: agency.contactPhone,
+    addressLine1: agency.addressLine1,
+    addressLine2: agency.addressLine2,
+    city: agency.city,
+    cityRef: serializeLocationReference(agency.cityRecord),
+    state: agency.state,
+    country: agency.country,
+    countryRef: serializeLocationReference(agency.countryRecord),
+    postalCode: agency.postalCode,
+    notes: agency.notes,
+    isActive: agency.isActive,
+    createdAt: agency.createdAt,
+    updatedAt: agency.updatedAt,
     parentAgency: agency.parentAgency,
+    branches: agency.branches.map((branch) => ({
+      ...branch,
+      cityRef: serializeLocationReference(branch.cityRecord),
+      countryRef: serializeLocationReference(branch.countryRecord),
+    })),
     phoneNumbers: agency.phoneNumbers,
     emailAddresses: agency.emailAddresses,
     documents: agency.documents,
@@ -219,6 +324,137 @@ async function ensureParentAgency(parentAgencyId: string | undefined, agencyIdTo
   }
 
   return parentAgency
+}
+
+async function resolveAgencyLocationInput(data: AgencyLocationInput) {
+  let countryRecord: { id: string; name: string } | null = null
+  let cityRecord: { id: string; name: string; countryId: string } | null = null
+
+  if (data.countryId) {
+    countryRecord = await prisma.country.findUnique({
+      where: {
+        id: data.countryId,
+      },
+      select: {
+        id: true,
+        name: true,
+      },
+    })
+
+    if (!countryRecord) {
+      throw new AppError('Selected country could not be found.', 404)
+    }
+  } else if (data.country) {
+    countryRecord = await prisma.country.findFirst({
+      where: {
+        name: {
+          equals: data.country.trim(),
+          mode: 'insensitive',
+        },
+      },
+      select: {
+        id: true,
+        name: true,
+      },
+    })
+  }
+
+  if (data.cityId) {
+    cityRecord = await prisma.city.findUnique({
+      where: {
+        id: data.cityId,
+      },
+      select: {
+        id: true,
+        name: true,
+        countryId: true,
+      },
+    })
+
+    if (!cityRecord) {
+      throw new AppError('Selected city could not be found.', 404)
+    }
+
+    if (countryRecord && cityRecord.countryId !== countryRecord.id) {
+      throw new AppError('Selected city does not belong to the selected country.', 400)
+    }
+
+    if (!countryRecord) {
+      countryRecord = await prisma.country.findUnique({
+        where: {
+          id: cityRecord.countryId,
+        },
+        select: {
+          id: true,
+          name: true,
+        },
+      })
+    }
+  } else if (data.city && countryRecord) {
+    cityRecord = await prisma.city.findFirst({
+      where: {
+        countryId: countryRecord.id,
+        name: {
+          equals: data.city.trim(),
+          mode: 'insensitive',
+        },
+      },
+      select: {
+        id: true,
+        name: true,
+        countryId: true,
+      },
+    })
+  }
+
+  return {
+    countryId: countryRecord?.id ?? (data.countryId === null ? null : undefined),
+    cityId:
+      data.cityId === null
+        ? null
+        : data.countryId === null
+          ? null
+          : cityRecord?.id ?? undefined,
+    countryName: countryRecord?.name ?? normalizeTextValue(data.country),
+    cityName:
+      data.countryId === null
+        ? null
+        : cityRecord?.name ?? normalizeTextValue(data.city),
+  }
+}
+
+function serializeAgencyLookupRecord(
+  agency: {
+    id: string
+    name: string
+    code: string
+    agencyType: AgencyInput['agencyType']
+    category: string | null
+    city: string | null
+    country: string | null
+    isActive: boolean
+    parentAgency: {
+      id: string
+      name: string
+      code: string
+    } | null
+    cityRecord?: { id: string; name: string } | null
+    countryRecord?: { id: string; name: string } | null
+  },
+) {
+  return {
+    id: agency.id,
+    name: agency.name,
+    code: agency.code,
+    agencyType: agency.agencyType,
+    category: agency.category,
+    city: agency.city,
+    cityRef: serializeLocationReference(agency.cityRecord),
+    country: agency.country,
+    countryRef: serializeLocationReference(agency.countryRecord),
+    isActive: agency.isActive,
+    parentAgency: agency.parentAgency,
+  }
 }
 
 async function buildAgencySummary(agencyIds: string[], includeBranches: boolean) {
@@ -350,7 +586,9 @@ function buildAgencyWhereInput(
             { category: { contains: query.search, mode: 'insensitive' } },
             { primaryContactPerson: { contains: query.search, mode: 'insensitive' } },
             { city: { contains: query.search, mode: 'insensitive' } },
+            { cityRecord: { is: { name: { contains: query.search, mode: 'insensitive' } } } },
             { country: { contains: query.search, mode: 'insensitive' } },
+            { countryRecord: { is: { name: { contains: query.search, mode: 'insensitive' } } } },
             { contactPhone: { contains: query.search, mode: 'insensitive' } },
             { contactEmail: { contains: query.search, mode: 'insensitive' } },
             { phoneNumbers: { some: { phoneNumber: { contains: query.search, mode: 'insensitive' } } } },
@@ -402,7 +640,19 @@ export async function lookupAgencies(authUser: AuthenticatedUser, query: AgencyL
       agencyType: true,
       category: true,
       city: true,
+      cityRecord: {
+        select: {
+          id: true,
+          name: true,
+        },
+      },
       country: true,
+      countryRecord: {
+        select: {
+          id: true,
+          name: true,
+        },
+      },
       isActive: true,
       parentAgency: {
         select: {
@@ -414,7 +664,7 @@ export async function lookupAgencies(authUser: AuthenticatedUser, query: AgencyL
     },
   })
 
-  return agencies
+  return agencies.map(serializeAgencyLookupRecord)
 }
 
 export async function getAgencyById(
@@ -449,13 +699,14 @@ export async function createAgency(data: AgencyInput) {
     await ensureParentAgency(data.parentAgencyId)
   }
 
+  const location = await resolveAgencyLocationInput(data)
   const phoneNumbers = normalizePhoneNumbers(data.phoneNumbers)
   const emailAddresses = normalizeEmailAddresses(data.emailAddresses)
   const documents = normalizeDocuments(data.documents)
   const primaryPhone = phoneNumbers.find((phoneNumber) => phoneNumber.isPrimary)?.phoneNumber
   const primaryEmail = emailAddresses.find((emailAddress) => emailAddress.isPrimary)?.email
 
-  return prisma.agency.create({
+  const createdAgency = await prisma.agency.create({
     data: {
       parentAgencyId: data.agencyType === 'BRANCH' ? data.parentAgencyId : undefined,
       name: data.name,
@@ -468,9 +719,11 @@ export async function createAgency(data: AgencyInput) {
       contactPhone: primaryPhone ?? (data.contactPhone?.trim() || undefined),
       addressLine1: data.addressLine1,
       addressLine2: data.addressLine2,
-      city: data.city,
+      city: location.cityName,
+      cityId: location.cityId,
       state: data.state,
-      country: data.country,
+      country: location.countryName,
+      countryId: location.countryId,
       postalCode: data.postalCode,
       notes: data.notes,
       isActive: data.isActive ?? true,
@@ -486,9 +739,12 @@ export async function createAgency(data: AgencyInput) {
     },
     include: agencyDetailInclude,
   })
+
+  const summary = await buildAgencySummary([createdAgency.id], false)
+  return serializeAgencyDetailRecord(createdAgency, summary)
 }
 
-export async function updateAgency(id: string, data: Partial<AgencyInput>) {
+export async function updateAgency(id: string, data: UpdateAgencyInput) {
   const existingAgency = await prisma.agency.findUnique({
     where: {
       id,
@@ -516,6 +772,12 @@ export async function updateAgency(id: string, data: Partial<AgencyInput>) {
     throw new AppError('A parent agency cannot be linked under another agency.', 400)
   }
 
+  const location = await resolveAgencyLocationInput({
+    countryId: data.countryId,
+    cityId: data.cityId,
+    country: data.country,
+    city: data.city,
+  })
   const phoneNumbers = data.phoneNumbers
     ? normalizePhoneNumbers(data.phoneNumbers)
     : existingAgency.phoneNumbers.map((phoneNumber) => ({
@@ -562,9 +824,15 @@ export async function updateAgency(id: string, data: Partial<AgencyInput>) {
           primaryPhone ?? (data.contactPhone !== undefined ? data.contactPhone?.trim() || null : undefined),
         addressLine1: data.addressLine1,
         addressLine2: data.addressLine2,
-        city: data.city,
+        city: data.city !== undefined || data.cityId !== undefined || data.countryId !== undefined ? location.cityName : undefined,
+        cityId: data.cityId !== undefined || data.countryId !== undefined ? location.cityId : undefined,
         state: data.state,
-        country: data.country,
+        country:
+          data.country !== undefined || data.countryId !== undefined || data.cityId !== undefined
+            ? location.countryName
+            : undefined,
+        countryId:
+          data.countryId !== undefined || data.cityId !== undefined ? location.countryId : undefined,
         postalCode: data.postalCode,
         notes: data.notes,
         isActive: data.isActive,

@@ -15,6 +15,8 @@ export type AgencyPayload = {
   name: string
   agencyType: AgencyType
   parentAgencyId?: string
+  countryId?: string
+  cityId?: string
   category?: string
   openingBalance: number
   primaryContactPerson?: string
@@ -72,23 +74,28 @@ export type AgencyLookupParams = {
   limit?: number
 }
 
-function normalizeAgencyPayload(payload: AgencyPayload) {
+function normalizeAgencyPayload(payload: AgencyPayload, mode: 'create' | 'update') {
+  const emptyValue = mode === 'update' ? null : undefined
+  const normalizedParentAgencyId = payload.parentAgencyId?.trim() || emptyValue
+
   return {
     ...payload,
     code: payload.code.trim().toUpperCase(),
-    parentAgencyId: payload.parentAgencyId?.trim() || undefined,
-    category: payload.category?.trim() || undefined,
+    parentAgencyId: payload.agencyType === 'BRANCH' ? normalizedParentAgencyId : emptyValue,
+    countryId: payload.countryId?.trim() || emptyValue,
+    cityId: payload.cityId?.trim() || emptyValue,
+    category: payload.category?.trim() || emptyValue,
     openingBalance: Number(payload.openingBalance ?? 0),
-    primaryContactPerson: payload.primaryContactPerson?.trim() || undefined,
-    contactEmail: payload.contactEmail?.trim() || undefined,
-    contactPhone: payload.contactPhone?.trim() || undefined,
-    addressLine1: payload.addressLine1?.trim() || undefined,
-    addressLine2: payload.addressLine2?.trim() || undefined,
-    city: payload.city?.trim() || undefined,
-    state: payload.state?.trim() || undefined,
-    country: payload.country?.trim() || undefined,
-    postalCode: payload.postalCode?.trim() || undefined,
-    notes: payload.notes?.trim() || undefined,
+    primaryContactPerson: payload.primaryContactPerson?.trim() || emptyValue,
+    contactEmail: payload.contactEmail?.trim() || emptyValue,
+    contactPhone: payload.contactPhone?.trim() || emptyValue,
+    addressLine1: payload.addressLine1?.trim() || emptyValue,
+    addressLine2: payload.addressLine2?.trim() || emptyValue,
+    city: payload.city?.trim() || emptyValue,
+    state: payload.state?.trim() || emptyValue,
+    country: payload.country?.trim() || emptyValue,
+    postalCode: payload.postalCode?.trim() || emptyValue,
+    notes: payload.notes?.trim() || emptyValue,
     phoneNumbers: payload.phoneNumbers
       .filter((phoneNumber) => phoneNumber.phoneNumber.trim())
       .map((phoneNumber, index) => ({
@@ -162,7 +169,7 @@ export async function getAgencyById(id: string, includeBranches = false) {
 async function createAgency(payload: AgencyPayload) {
   const response = await apiRequest<EntityResponse<Agency>>('/agencies', {
     method: 'POST',
-    body: normalizeAgencyPayload(payload),
+    body: normalizeAgencyPayload(payload, 'create'),
   })
 
   return response.data
@@ -171,7 +178,7 @@ async function createAgency(payload: AgencyPayload) {
 async function updateAgency(id: string, payload: AgencyPayload) {
   const response = await apiRequest<EntityResponse<Agency>>(`/agencies/${id}`, {
     method: 'PATCH',
-    body: normalizeAgencyPayload(payload),
+    body: normalizeAgencyPayload(payload, 'update'),
   })
 
   return response.data

@@ -1,6 +1,7 @@
 export const queryKeys = {
   authUser: ['auth', 'me'] as const,
   agencies: ['agencies'] as const,
+  locations: ['locations'] as const,
   groups: ['groups'] as const,
   groupDetails: ['group-details'] as const,
   payments: ['payments'] as const,
